@@ -1,0 +1,185 @@
+@page {
+  size: A4;
+  margin: 2.2cm 1.8cm;
+  @top-center { content: "knowledge-base-skills — User Manual"; font-size: 7pt; color: #999; }
+  @bottom-center { content: counter(page); font-size: 8pt; color: #999; }
+}
+
+body {
+  font-family: 'Helvetica Neue', Arial, sans-serif;
+  font-size: 10pt;
+  line-height: 1.5;
+  color: #1a1a1a;
+}
+
+/* ---- Cover Page ---- */
+.cover-page {
+  page-break-after: always;
+  text-align: center;
+  padding-top: 6cm;
+}
+.cover-page h1 {
+  font-size: 28pt;
+  color: #1e3a5f;
+  border: none;
+  margin-bottom: 0.3cm;
+}
+.cover-page .subtitle {
+  font-size: 14pt;
+  color: #555;
+  margin-top: 0.5cm;
+}
+.cover-page .version {
+  font-size: 10pt;
+  color: #888;
+  margin-top: 2cm;
+}
+.cover-page .date {
+  font-size: 10pt;
+  color: #888;
+  margin-top: 0.3cm;
+}
+
+/* ---- Headings ---- */
+h1 {
+  font-size: 18pt;
+  color: #1e3a5f;
+  border-bottom: 3px solid #2563eb;
+  padding-bottom: 4px;
+  page-break-before: always;
+  margin-top: 1cm;
+}
+h1:first-of-type {
+  page-break-before: avoid;
+}
+h2 {
+  font-size: 13pt;
+  color: #2563eb;
+  border-bottom: 1px solid #d0d7de;
+  padding-bottom: 2px;
+  margin-top: 0.6cm;
+}
+h3 {
+  font-size: 11pt;
+  color: #333;
+  margin-top: 0.4cm;
+}
+
+/* ---- Tables ---- */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.3cm 0;
+  font-size: 9pt;
+}
+th, td {
+  border: 1px solid #ccc;
+  padding: 4px 8px;
+  text-align: left;
+}
+th {
+  background: #2563eb;
+  color: white;
+  font-weight: 600;
+}
+tr:nth-child(even) td {
+  background: #f6f8fa;
+}
+
+/* ---- Code ---- */
+code {
+  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  font-size: 8.5pt;
+  background: #f0f2f5;
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+pre {
+  background: #1e293b;
+  color: #e2e8f0;
+  padding: 0.3cm;
+  border-radius: 4px;
+  font-size: 8pt;
+  overflow-x: auto;
+  page-break-inside: avoid;
+}
+pre code {
+  background: none;
+  padding: 0;
+}
+
+/* ---- Images ---- */
+img {
+  max-width: 100%;
+  border: 1px solid #d0d7de;
+  border-radius: 4px;
+  margin: 0.4cm auto;
+  display: block;
+}
+.image-caption {
+  text-align: center;
+  font-size: 9pt;
+  color: #666;
+  margin-top: -0.2cm;
+  margin-bottom: 0.4cm;
+  font-style: italic;
+}
+
+/* ---- Callouts ---- */
+.note, .tip, .warning {
+  padding: 0.2cm 0.3cm;
+  margin: 0.3cm 0;
+  border-left: 4px solid;
+  border-radius: 4px;
+  page-break-inside: avoid;
+}
+.note {
+  background: #eef6ff;
+  border-color: #2563eb;
+}
+.tip {
+  background: #f0fdf4;
+  border-color: #16a34a;
+}
+.warning {
+  background: #fff7ed;
+  border-color: #ea580c;
+}
+
+/* ---- Lists ---- */
+ul, ol {
+  margin: 0.2cm 0;
+  padding-left: 0.6cm;
+}
+li {
+  margin-bottom: 0.1cm;
+}
+
+/* ---- TOC ---- */
+nav#TOC {
+  page-break-after: always;
+}
+nav#TOC ul {
+  list-style: none;
+  padding-left: 0;
+}
+nav#TOC li {
+  margin-bottom: 0.15cm;
+}
+nav#TOC a {
+  color: #2563eb;
+  text-decoration: none;
+}
+
+/* ---- Misc ---- */
+hr {
+  border: none;
+  border-top: 1px solid #d0d7de;
+  margin: 0.4cm 0;
+}
+blockquote {
+  border-left: 3px solid #d0d7de;
+  margin: 0.3cm 0;
+  padding-left: 0.3cm;
+  color: #555;
+}

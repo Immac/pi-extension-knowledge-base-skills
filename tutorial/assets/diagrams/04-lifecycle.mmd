@@ -1,0 +1,17 @@
+flowchart LR
+    AUTHOR["✍️ Author writes
+    2 KB articles
+    (doc + source)"] --> RELOAD["🔄 pi /reload"]
+
+    RELOAD --> EXT["📦 kb-skills extension
+    hooks resources_discover"]
+
+    EXT --> SCAN["🔍 Scan KB articles"]
+    SCAN --> VALIDATE["✅ Validate & filter"]
+    VALIDATE --> GEN["📁 Generate cache skills"]
+
+    GEN --> PI["🧠 pi discovers skills
+    ready for use"]
+
+    PI --> ITERATE["💡 Use / improve skills"]
+    ITERATE -->|Edit KB article| RELOAD

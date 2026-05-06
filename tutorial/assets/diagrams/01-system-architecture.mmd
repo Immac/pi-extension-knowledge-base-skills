@@ -1,0 +1,30 @@
+flowchart TD
+    KB["📚 Knowledge Base (~/.pi/knowledge-base)
+    Article .md files with frontmatter tags"] --> SCAN["kb‑skills Extension
+    resources_discover hook"]
+
+    SCAN --> FILTER["Filter skill‑source articles
+    Checks: type:skill, kind:skill-source, skill:enabled"]
+
+    FILTER --> VALIDATE["Validate article
+    - skill_ref & skill_name tags present
+    - embedded frontmatter name matches skill_name
+    - non‑empty description and body"]
+
+    VALIDATE -->|Valid| CACHE["Write to cache directory
+    ~/.cache/pi/kb-skills/<skill-name>/
+      ├── SKILL.md
+      └── SOURCE.json"]
+
+    VALIDATE -->|Invalid| SKIP["Skip article
+    (no generated skill)"]
+
+    CACHE --> DISCOVER["🔁 resources_discover returns
+    generated skill paths to pi runtime"]
+
+    DISCOVER --> PI["🧠 pi runtime loads skills
+    from generated directories"]
+
+    KB --> SAVE["kb_save_skill tool
+    Creates linked doc + source articles"]
+    SAVE --> KB

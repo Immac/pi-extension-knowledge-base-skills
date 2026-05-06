@@ -1,0 +1,32 @@
+{
+  "name": "knowledge-base-skills",
+  "version": "1.0.0",
+  "description": "A pi extension for discovering knowledge-base-backed skills",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "test": "npm run build && node --test test/*.test.mjs",
+    "prepublish": "npm run build"
+  },
+  "keywords": ["knowledge-base", "skills", "pi-package"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "gray-matter": "^4.0.3"
+  },
+  "peerDependencies": {
+    "@mariozechner/pi-coding-agent": "*",
+    "typebox": "*"
+  },
+  "devDependencies": {
+    "@mariozechner/pi-coding-agent": "*",
+    "@types/node": "^20.10.0",
+    "typebox": "*",
+    "typescript": "^5.3.0"
+  },
+  "pi": {
+    "extensions": [
+      "./knowledge-base-skills.ts"
+    ]
+  }
+}
