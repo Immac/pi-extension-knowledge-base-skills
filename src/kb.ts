@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync } from 'fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'fs';
 import { join } from 'path';
 import matter from 'gray-matter';
 import type { KnowledgeBaseArticle, ValueTag } from './types.js';
@@ -47,27 +47,75 @@ function parseValueTags(tags: unknown): readonly ValueTag[] {
   return [];
 }
 
+/** Path to the articles/ subfolder within a knowledge base */
+function getArticlesDir(knowledgeBasePath: string): string {
+  return join(knowledgeBasePath, 'articles');
+}
+
+/** True if the knowledge base uses the new folder-per-article layout */
+function hasFolderArticles(knowledgeBasePath: string): boolean {
+  const dir = getArticlesDir(knowledgeBasePath);
+  return existsSync(dir) && statSync(dir).isDirectory();
+}
+
 export function readArticle(slug: string, knowledgeBasePath: string): KnowledgeBaseArticle | null {
-  const filePath = join(knowledgeBasePath, `${slug}.md`);
-  if (!existsSync(filePath)) return null;
+  let filePath: string;
 
-  const raw = readFileSync(filePath, 'utf8');
-  const parsed = matter(raw);
-  const title = typeof parsed.data.title === 'string' && parsed.data.title.trim().length > 0
-    ? parsed.data.title
-    : slug;
+  // 1. Try folder-based: articles/{slug}/ARTICLE.md
+  if (hasFolderArticles(knowledgeBasePath)) {
+    filePath = join(getArticlesDir(knowledgeBasePath), slug, 'ARTICLE.md');
+    if (existsSync(filePath)) {
+      const raw = readFileSync(filePath, 'utf8');
+      const parsed = matter(raw);
+      const title = typeof parsed.data.title === 'string' && parsed.data.title.trim().length > 0
+        ? parsed.data.title
+        : slug;
+      return {
+        slug,
+        title,
+        content: parsed.content,
+        tags: parseValueTags(parsed.data.tags),
+        filePath,
+      };
+    }
+  }
 
-  return {
-    slug,
-    title,
-    content: parsed.content,
-    tags: parseValueTags(parsed.data.tags),
-    filePath,
-  };
+  // 2. Fallback to legacy flat file at root
+  filePath = join(knowledgeBasePath, `${slug}.md`);
+  if (existsSync(filePath)) {
+    const raw = readFileSync(filePath, 'utf8');
+    const parsed = matter(raw);
+    const title = typeof parsed.data.title === 'string' && parsed.data.title.trim().length > 0
+      ? parsed.data.title
+      : slug;
+    return {
+      slug,
+      title,
+      content: parsed.content,
+      tags: parseValueTags(parsed.data.tags),
+      filePath,
+    };
+  }
+
+  return null;
 }
 
 export function listArticleFiles(knowledgeBasePath: string): readonly string[] {
   if (!existsSync(knowledgeBasePath)) return [];
+
+  if (hasFolderArticles(knowledgeBasePath)) {
+    // New folder-based layout: each subfolder in articles/ has an ARTICLE.md
+    const articlesDir = getArticlesDir(knowledgeBasePath);
+    return readdirSync(articlesDir)
+      .filter((entry) => {
+        const statPath = join(articlesDir, entry);
+        return statSync(statPath).isDirectory();
+      })
+      .map((slug) => join(articlesDir, slug, 'ARTICLE.md'))
+      .filter((filePath) => existsSync(filePath));
+  }
+
+  // Legacy flat files at root
   return readdirSync(knowledgeBasePath)
     .filter((entry) => entry.endsWith('.md') && !entry.endsWith('.sidecar.md'))
     .map((entry) => join(knowledgeBasePath, entry));

@@ -1,5 +1,5 @@
 import { homedir } from 'os';
-import { basename, join } from 'path';
+import { basename, dirname, join } from 'path';
 import { listArticleFiles, readArticle } from './kb.js';
 import { parseSkillSource } from './skill-source.js';
 import { writeSkillCache } from './cache.js';
@@ -23,7 +23,11 @@ export function getKnowledgeBaseSkillsConfig(): KnowledgeBaseSkillsConfig {
 export function discoverSkillSources(config: KnowledgeBaseSkillsConfig): readonly SkillSourceRecord[] {
   const records: SkillSourceRecord[] = [];
   for (const filePath of listArticleFiles(config.knowledgeBasePath)) {
-    const slug = basename(filePath).replace(/\.md$/, '');
+    // Extract slug from path:
+    //   folder-based: articles/{slug}/ARTICLE.md  → slug from parent dir
+    //   legacy flat:  {slug}.md                   → slug from filename
+    const folderMatch = filePath.match(/articles\/([^/]+)\/ARTICLE\.md$/);
+    const slug = folderMatch ? folderMatch[1] : basename(filePath).replace(/\.md$/, '');
     if (!slug) continue;
     const article = readArticle(slug, config.knowledgeBasePath);
     if (!article) continue;
