@@ -47,6 +47,8 @@ function tryOuterFrontmatter(article: KnowledgeBaseArticle, skillName: string, t
 export interface ParseSkillSourceOptions {
   /** Allow parsing disabled skill-source articles too (for explicit install). Default: false. */
   allowDisabled?: boolean;
+  /** Allow parsing articles tagged install:skip (for explicit install). Default: false. */
+  allowSkip?: boolean;
 }
 
 export function parseSkillSource(article: KnowledgeBaseArticle, options?: ParseSkillSourceOptions): SkillSourceRecord | null {
@@ -64,6 +66,13 @@ export function parseSkillSource(article: KnowledgeBaseArticle, options?: ParseS
   // For auto-discovery, require skill:enabled. For explicit install, accept disabled too.
   if (!options?.allowDisabled) {
     if (!hasTag(article.tags, 'skill', 'enabled')) {
+      return null;
+    }
+  }
+
+  // Skip articles tagged install:skip during auto-discovery, unless explicitly overridden.
+  if (!options?.allowSkip) {
+    if (hasTag(article.tags, 'install', 'skip')) {
       return null;
     }
   }

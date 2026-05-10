@@ -20,11 +20,6 @@ export interface SkillSourceRecord {
   readonly skillContent: string;
 }
 
-export interface KnowledgeBaseSkillsConfig {
-  readonly knowledgeBasePath: string;
-  readonly cacheRoot: string;
-}
-
 export type ArticleScope = 'local' | 'global';
 
 export interface CreateArticleOptions {

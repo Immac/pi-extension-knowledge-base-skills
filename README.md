@@ -66,6 +66,9 @@ Validate and repair a skill-source article — add missing required tags, fix in
 | `description` | string? | — | Override description (updates frontmatter) |
 | `source` | string? | `"user"` | Override source tag value |
 
+> **Note:** The extension does **not** auto-discover or auto-load skills from the KB.
+> Skills are only installed when the user explicitly runs `kb_install_skill`.
+
 ## Qualification criteria
 
 An article must include all of these tags to be recognized as a skill source:
@@ -195,8 +198,7 @@ npm test
 | `src/list-skills.ts` | `kb_list_skills` tool logic |
 | `src/fix-skill.ts` | `kb_fix_skill` tool logic |
 | `src/skill-materialize.ts` | `kb_install_skill` tool logic |
-| `src/cache.ts` | Writes `SKILL.md` and `SOURCE.json` to cache directories |
-| `src/loader.ts` | Scans KB articles and resolves paths |
+| `src/loader.ts` | Resolves the default knowledge base path |
 | `src/types.ts` | Type definitions |
 
 ## Resources

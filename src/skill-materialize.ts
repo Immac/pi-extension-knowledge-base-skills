@@ -33,8 +33,8 @@ export function executeMaterializeSkill(options: MaterializeSkillOptions): Mater
       return { success: false, error: `Article not found: ${options.articleSlug}` };
     }
 
-    // Accept disabled skills too — user is explicitly installing
-    const skill = parseSkillSource(article, { allowDisabled: true });
+    // Accept disabled and install:skip skills — user is explicitly installing
+    const skill = parseSkillSource(article, { allowDisabled: true, allowSkip: true });
     if (!skill) {
       return { success: false, error: `Article "${options.articleSlug}" is not a valid skill-source article` };
     }

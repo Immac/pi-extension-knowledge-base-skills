@@ -2,13 +2,14 @@
 
 ## Purpose
 
-`knowledge-base-skills` is a pi extension that bridges the knowledge base and pi's skill system. It discovers skill-source articles from the knowledge base, validates them, and materializes them as cached runtime skill directories that pi can load via the `resources_discover` lifecycle event.
+`knowledge-base-skills` is a pi extension that provides tools for managing pi skills stored as knowledge base articles. It lets users save skills to the KB, list them, validate them, fix broken ones, and explicitly install them into pi skill directories.
+
+This extension does **not** auto-discover or auto-load skills from the KB. Skills are only installed when the user explicitly runs `kb_install_skill`.
 
 ## Goals
 
-- Automatically surface skill definitions stored as knowledge base articles
-- Keep the skill pipeline stateless and cache-backed
-- Validate skill structure at discovery time (tags, naming, embedded frontmatter)
+- Provide tool-first workflows for skill authoring and maintenance
+- Validate skill structure (tags, naming, embedded frontmatter)
 - Support both folder-based and legacy flat knowledge base layouts
 - Require zero manual configuration beyond path overrides
 
@@ -16,70 +17,70 @@
 
 | Component | File(s) | Responsibility |
 |---|---|---|
-| Extension entrypoint | `knowledge-base-skills.ts`, `src/index.ts` | Registers the `resources_discover` event handler |
-| Loader | `src/loader.ts` | Orchestrates the full pipeline: scan KB → read articles → parse skills → write cache |
-| KB reader | `src/kb.ts` | Reads articles from the knowledge base filesystem (folder-based or legacy) |
-| Skill parser | `src/skill-source.ts` | Validates article tags and parses embedded SKILL.md frontmatter |
-| Cache writer | `src/cache.ts` | Materializes `SKILL.md` and `SOURCE.json` into cache directories |
+| Extension entrypoint | `knowledge-base-skills.ts`, `src/index.ts` | Registers the 4 tools (`kb_save_skill`, `kb_list_skills`, `kb_install_skill`, `kb_fix_skill`) |
+| KB reader/writer | `src/kb.ts` | Reads articles from and writes articles to the knowledge base |
+| Skill parser | `src/skill-source.ts` | Validates article tags and parses embedded SKILL.md frontmatter (inner or outer) |
+| List skills | `src/list-skills.ts` | `kb_list_skills` tool — scans KB for skill-source articles and reports status |
+| Save skill | `src/save-skill.ts` | `kb_save_skill` tool — creates linked skill-source + doc articles |
+| Fix skill | `src/fix-skill.ts` | `kb_fix_skill` tool — repairs missing tags, frontmatter, enables disabled skills |
+| Install skill | `src/skill-materialize.ts` | `kb_install_skill` tool — writes SKILL.md and SOURCE.json into a pi skill directory |
+| Path resolver | `src/loader.ts` | Resolves the default knowledge base path |
 | Types | `src/types.ts` | Shared type definitions |
 
-## Data Flow
+## Tool Flow
 
 ```
-resources_discover event fired by pi runtime
+User runs a tool (e.g. kb_install_skill)
          │
          ▼
-  loader.refreshSkillCache(config)
-         │
-         ├─► kb.listArticleFiles(knowledgeBasePath)
-         │       └─► reads articles/ subfolders (or legacy *.md files)
+  pi dispatches to tool handler
          │
          ├─► kb.readArticle(slug, knowledgeBasePath)
          │       └─► reads articles/{slug}/ARTICLE.md (or {slug}.md)
          │
          ├─► skill-source.parseSkillSource(article)
          │       ├─► checks required tags:
-         │       │     type:skill, kind:skill-source, skill:enabled
+         │       │     type:skill, kind:skill-source
          │       ├─► validates skill_ref and skill_name tags
          │       ├─► parses embedded frontmatter (name, description)
          │       └─► validates name matches skill_name
          │
-         └─► cache.writeSkillCache(cacheRoot, skills)
-                 ├─► clears existing cache
-                 ├─► creates <skill-name>/ directories
-                 ├─► writes SKILL.md (full article body)
-                 └─► writes SOURCE.json (metadata)
-         │
-         ▼
-  returns { skillPaths } to pi runtime
+         └─► writes SKILL.md + SOURCE.json to target skill directory
 ```
 
 ## Key Principles
 
-### 1. Stateless discovery
+### 1. Explicit installation only
 
-Everything is derived from the knowledge base at `resources_discover` time. The cache is wiped and rebuilt on each cycle — there is no incremental state.
+Skills are never auto-discovered or auto-loaded from the KB. The user must explicitly run `kb_install_skill` to install a skill into a pi skill directory.
 
-### 2. Explicit opt-in
+### 2. Two-article model
 
-Only articles with all three tags (`type:skill`, `kind:skill-source`, `skill:enabled`) qualify. This prevents accidental skill registration from regular documentation articles.
+Each skill has two linked KB articles:
+- **Skill-source article** (`type:skill`, `kind:skill-source`, `skill:enabled`) — machine-oriented, contains raw SKILL.md
+- **Documentation article** (`type:guide`, `kind:skill-doc`) — human-readable reference
+
+Linked via a shared `skill_ref` tag.
 
 ### 3. Validation at parse time
 
 Skills must have:
+- Required tags (`type:skill`, `kind:skill-source`, `skill_ref`, `skill_name`, `audience:agent`, `format:agent-skill`, `source:user`)
 - Correct `skill_name` format (lowercase, hyphen-separated, ≤64 chars)
 - Matching `name` in embedded frontmatter
 - Non-empty `description` and body content
 
-Invalid articles are silently skipped.
-
 ### 4. Path configurability
 
-Default paths (`~/.pi/knowledge-base` and `~/.cache/pi/kb-skills`) can be overridden via environment variables, making the extension usable with non-standard knowledge base locations.
+Default KB path (`~/.pi/knowledge-base`) can be overridden via `KB_SKILLS_KB_PATH` environment variable.
 
 ### 5. KB layout agnostic
 
-The `kb.ts` reader supports both the new folder-per-article layout (`articles/{slug}/ARTICLE.md`) and legacy flat files (`{slug}.md`), so the extension works regardless of which KB format is in use.
+The `kb.ts` reader supports both the new folder-per-article layout (`articles/{slug}/ARTICLE.md`) and legacy flat files (`{slug}.md`).
+
+### 6. Self-skill safeguard
+
+The extension's own skill (`knowledge-base-skills`) is tagged `install:skip` in its KB article, preventing accidental re-installation from the KB since it's already bundled with the extension package.
 
 ## Dependencies
 
