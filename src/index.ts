@@ -129,10 +129,10 @@ export default function registerKnowledgeBaseSkills(pi: ExtensionAPI) {
         description: 'Slug of the skill-source article to fix',
       }),
       fixTags: Type.Optional(Type.Boolean({
-        description: 'Add missing required tags (type, kind, skill_ref, skill_name, audience, format, source). Default: true',
+        description: 'Add missing required tags (type, kind, skill_ref, skill_name, audience, format, source). Off by default; enable explicitly',
       })),
       fixFrontmatter: Type.Optional(Type.Boolean({
-        description: 'Add or repair inner embedded frontmatter (name, description). Default: true',
+        description: 'Add or repair inner embedded frontmatter (name, description). Off by default; enable explicitly',
       })),
       enable: Type.Optional(Type.Boolean({
         description: 'Change skill:disabled → skill:enabled',

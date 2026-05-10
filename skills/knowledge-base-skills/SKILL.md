@@ -102,19 +102,19 @@ kb_fix_skill
   description: "A repaired skill"
 ```
 
-**Example (dry-run view):**
+**Example (preview issues):**
 ```
 kb_list_skills
   scope: global
   verbose: true
 ```
-Use the validation output from `kb_list_skills` to decide which skills need fixing, then apply `kb_fix_skill`.
+See validation issues before fixing anything, then apply `kb_fix_skill` as needed.
 
 ## Install targets
 
 | Scope | Directory |
 |-------|-----------|
-| `local` (default) | `<project>/.pi/agent/skills/<name>/` |
+| `local` (default) | `<cwd>/.pi/agent/skills/<name>/` |
 | `global` | `~/.pi/agent/skills/<name>/` |
 
 ## Tag schema reference

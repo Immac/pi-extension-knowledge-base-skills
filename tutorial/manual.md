@@ -36,7 +36,7 @@ Manage pi skills stored as knowledge base articles — save, list, validate, fix
 
 **knowledge-base-skills** is a pi extension that lets you manage pi skills as knowledge base articles. Instead of writing SKILL.md files directly into `.pi/agent/skills/`, you store them in the knowledge base as structured articles with metadata tags. The extension provides tools to save, list, validate, repair, and install these articles as runnable pi skills.
 
-<div class="tip">**Tip**: This extension follows a save-validate-install workflow. Skills are never auto-loaded — you explicitly save them to the KB, then install them to a project or user skill directory.</div>
+<div class="tip">**Tip**: This extension follows a save-validate-install workflow. You save a skill to the KB, validate it, fix any issues, then explicitly install it to a project or user skill directory.</div>
 
 ## Key Features
 
@@ -44,12 +44,11 @@ Manage pi skills stored as knowledge base articles — save, list, validate, fix
 - **List** all skill articles with validation status
 - **Install** skills from KB to pi's skill directories
 - **Fix** broken skill articles (missing tags, damaged frontmatter)
-- **Auto-discover** enabled skills on pi session start
 
 ## Prerequisites
 
 - pi coding-agent runtime installed
-- Knowledge base extension installed (`~/.pi/knowledge-base/`)
+- Knowledge base available at `~/.pi/knowledge-base/` (pi core feature)
 - The knowledge-base-skills extension installed via `extension_creator`
 
 # 2. Quick Start Guide
@@ -118,11 +117,11 @@ This writes `SKILL.md` and `SOURCE.json` to `.pi/agent/skills/code-reviewer/`.
 
 ## Step 5: Reload pi
 
-Run `/reload` in pi to discover the new skill. The extension automatically refreshes the skill cache from the KB on the `resources_discover` event.
+Run `/reload` in pi to pick up the new skill.
 
-## Step 6: Fix Issues (if any)
+## Step 6: Fix Issues (if needed)
 
-If `kb_list_skills` shows validation errors for your skill:
+If `kb_list_skills` shows validation errors for your skill, fix them before installing:
 
 ```
 kb_fix_skill
@@ -132,7 +131,7 @@ kb_fix_skill
   enable: true
 ```
 
-This adds any missing required tags, repairs the inner frontmatter, and ensures the skill is enabled.
+This adds any missing required tags, repairs the inner frontmatter, and ensures the skill is enabled. After fixing, re-run `kb_install_skill` to re-install.
 
 # 3. Concepts & Architecture
 
@@ -159,11 +158,11 @@ The loader prefers inner frontmatter. If absent, it falls back to the outer arti
 
 ## Module Architecture
 
-The extension consists of six modules coordinated by the entry point:
+The extension consists of the following modules coordinated by the entry point:
 
 | Module | File | Responsibility |
 |--------|------|----------------|
-| **index.ts** | Entry | Registers all tools and the `resources_discover` hook |
+| **index.ts** | Entry | Registers all 4 tools |
 | **kb.ts** | KB I/O | Read, write, list articles; slug generation; path resolution |
 | **save-skill.ts** | Save | `kb_save_skill` — creates two linked articles |
 | **skill-materialize.ts** | Install | `kb_install_skill` — writes SKILL.md + SOURCE.json |
@@ -171,24 +170,10 @@ The extension consists of six modules coordinated by the entry point:
 | **fix-skill.ts** | Fix | `kb_fix_skill` — repairs tags and frontmatter |
 | **skill-source.ts** | Parser | Validates article tags and parses metadata |
 | **cache.ts** | Cache | Writes SKILL.md files with proper frontmatter |
-| **loader.ts** | Discovery | Orchestrates KB scan → parse → cache pipeline |
+| **loader.ts** | Discovery | Scans KB articles, parses skill sources, writes cache |
 
 ![System architecture](assets/diagrams/04-system-architecture.png)
 <div class="image-caption">Fig 3: Architecture of the knowledge-base-skills extension, showing module relationships</div>
-
-## Discovery Pipeline
-
-On session start, the `resources_discover` event triggers:
-
-```
-resources_discover
-  → loader.refreshSkillCache()
-    → kb.listArticleFiles()          # Scan KB for .md files
-    → kb.readArticle()               # Read + parse each article
-    → skill-source.parseSkillSource()# Validate tags, extract metadata
-    → cache.writeSkillCache()        # Write SKILL.md + SOURCE.json
-  → returns { skillPaths }           # pi loads these as skills
-```
 
 ## Tag-Based Qualification
 
@@ -196,7 +181,7 @@ An article qualifies as a skill source only if it has all required tags:
 
 ```
 type:skill        + kind:skill-source  → is a skill definition
-skill:enabled                          → is active for auto-discovery
+skill:enabled                          → qualifies for installation
 skill_ref:<id>    + skill_name:<name>  → provides runtime metadata
 audience:agent    + format:agent-skill → machine-oriented content
 source:user                            → origin tracking
@@ -296,7 +281,7 @@ Materializes a KB skill-source article into a pi skill directory as `SKILL.md` +
 
 | Scope | Directory |
 |-------|-----------|
-| `local` (default) | `<project>/.pi/agent/skills/<name>/` |
+| `local` (default) | `<cwd>/.pi/agent/skills/<name>/` |
 | `global` | `~/.pi/agent/skills/<name>/` |
 
 ### Example
@@ -393,9 +378,9 @@ Fixed skill article: deprecated-analyzer-skill-source
   File: /home/user/.pi/knowledge-base/articles/deprecated-analyzer-skill-source/ARTICLE.md
   Actions (4):
     • tag_added: Added tag "audience:agent"
+    • tag_added: Added tag "format:agent-skill"
     • tag_enabled: Changed skill:disabled → skill:enabled
     • frontmatter_added: Added missing name and description to inner frontmatter
-    • tag_added: Added tag "format:agent-skill"
 ```
 
 # 5. Skill Article Format
@@ -559,7 +544,7 @@ When you run `kb_list_skills verbose: true`, every skill article is checked agai
 2. Article slug is wrong
    - Check slug with `kb_list_skills`
 3. Article is disabled
-   - Use `kb_fix_skill enable: true` or materialize with `kb_install_skill` (accepts disabled)
+   - Use `kb_fix_skill enable: true` or install directly with `kb_install_skill` (accepts disabled skills)
 
 ### Broken Frontmatter
 
@@ -581,8 +566,6 @@ If pi shows this error after installing:
 1. Use `kb_fix_skill` to add missing frontmatter
 2. Re-install with `kb_install_skill`
 3. Run `/reload` in pi
-
-### Pipe in pi
 
 <div class="note">The skill article in the KB and the installed SKILL.md are separate files. After fixing the KB article, you must re-install the skill for the changes to take effect.</div>
 
@@ -655,7 +638,7 @@ The extension's internal module structure:
 
 **Q: What happens if I save a skill with `enabled: false`?**
 
-A: The skill is saved to the KB but skipped by auto-discovery. Use `kb_fix_skill enable: true` later, or explicitly install it with `kb_install_skill`.
+A: The skill is saved to the KB but not flagged for installation. Use `kb_fix_skill enable: true` to activate it, then install with `kb_install_skill`.
 
 **Q: Can I store skills in both local and global KB?**
 
@@ -673,9 +656,9 @@ A: Edit the ARTICLE.md in the KB directly, then run `kb_install_skill` again to 
 
 A: Safety — the tool never enables a skill without explicit consent. Use `enable: true` to flip it to `skill:enabled`.
 
-**Q: Can I use `kb_fix_skill` as a dry run?**
+**Q: How can I preview issues without making changes?**
 
-A: Yes — run `kb_list_skills verbose: true` first to see all validation issues without making changes. Then decide which `kb_fix_skill` options to apply.
+A: Run `kb_list_skills verbose: true` to see all validation issues without modifying anything. Then decide which `kb_fix_skill` options to apply.
 
 **Q: What if my KB is at a custom path?**
 
