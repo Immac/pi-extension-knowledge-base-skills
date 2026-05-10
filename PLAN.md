@@ -7,6 +7,7 @@ Create a pi extension that:
 1. saves skills into the knowledge base as articles
 2. keeps a human-readable documentation article separate from the pure skill-source article
 3. dynamically loads enabled skill-source articles from the knowledge base as pi skills
+4. defaults to local project install when materializing
 
 ## Why a separate extension
 
@@ -31,6 +32,7 @@ Planned workspace:
   - pure skill-source article
 - deterministic generation of loadable pi skills from KB articles
 - tag schema that creates useful natural connections in the knowledge base
+- local project install as default materialization target
 
 ### Out of scope for first version
 
@@ -179,7 +181,7 @@ Expected frontmatter:
 Expected body:
 
 - valid skill markdown suitable for conversion into `SKILL.md`
-- must include skill frontmatter with a valid `name` and `description`
+- must include skill frontmatter with a valid `name` and `description` (inner frontmatter block, or outer article tags)
 
 ## Extension architecture
 
@@ -191,8 +193,10 @@ Expected body:
 4. generate cache-backed runtime skill directories
 5. expose generated skill paths through `resources_discover`
 6. provide a tool to save a skill into the KB as linked articles
+7. provide a tool to materialize a KB skill into a local directory
+8. default to local project `.pi/skills/` for materialization
 
-### Proposed runtime pieces
+### Runtime pieces
 
 #### 1. knowledge base scanner
 
@@ -216,58 +220,40 @@ Expected body:
 - regenerates on startup/reload
 - may optionally include a manifest for traceability
 
-Possible cache locations:
+Default location:
 
-- `~/.cache/pi/kb-skills/`
-- or a project-local generated cache if needed later
+- project-local `.pi/skills/` if a `.pi/` directory exists in the project tree
+- `~/.pi/agent/skills/` otherwise
 
 #### 4. pi extension entrypoint
 
 - hooks `resources_discover`
 - returns generated skill paths
-- registers one or more tools for skill persistence
+- registers tools for skill saving and materialization
 
 #### 5. save-skill tool
 
-Initial tool idea:
-
-- accepts skill name, description, raw skill content, and optional documentation content/tags
-- writes:
-  - skill doc article
-  - skill source article
+- `kb_save_skill`
+- accepts skill name, content, optional doc content, scope, tags
+- writes skill doc article and skill source article
 - ensures they share `skill_ref`
+- defaults to local KB scope
+
+#### 6. materialize-skill tool
+
+- `kb_materialize_skill`
+- accepts article slug, optional target directory
+- reads and validates the KB article
+- writes `SKILL.md` and `SOURCE.json` to target directory
 
 ## Tool-first interface
 
-Prefer a minimal tool-first interface.
+### Registered tools
 
-### Candidate initial tool
+- `kb_save_skill` (implemented)
+- `kb_materialize_skill` (implemented)
 
-- `kb_save_skill`
-
-Possible parameters:
-
-- `skillName`
-- `skillDescription`
-- `skillContent`
-- `docTitle`
-- `docContent`
-- `sharedRef` optional
-- `tags` optional
-- `status` optional
-- `enabled` optional
-
-Behavior:
-
-- generate `skill_ref` if absent
-- create/update the readable doc article
-- create/update the pure skill-source article
-- normalize required tags
-- preserve natural-connection tags where possible
-
-### Candidate follow-up tools
-
-Not required for v1, but worth planning:
+### Future candidates
 
 - `kb_list_skills`
 - `kb_export_skill`
@@ -277,14 +263,13 @@ Not required for v1, but worth planning:
 
 ## Generated runtime skill model
 
-At runtime, each enabled skill-source article should become something like:
+Each enabled skill-source article becomes:
 
-- `<cache>/<skill-name>/SKILL.md`
-
-Optional generated files later:
-
-- `SOURCE.json` manifest pointing back to KB slug and `skill_ref`
-- copied references/assets if article model grows more complex
+```
+<default-materialize-dir>/<skill-name>/
+├── SKILL.md       ← Full skill markdown from the article body
+└── SOURCE.json    ← Metadata linking back to the source article
+```
 
 ## Validation rules
 
@@ -295,35 +280,34 @@ Optional generated files later:
 - `skill:enabled`
 - `skill_ref:*`
 - `skill_name:*`
-- valid embedded skill frontmatter
+- valid skill name (inner frontmatter or outer tags)
 - non-empty skill description
-- skill `name` must match generated directory name
+- skill `name` must match `skill_name`
 
 ### Soft requirements / warnings
 
 - missing linked doc article
-- mismatched `skill_name` between tags and embedded skill frontmatter
 - missing `status:*`
 - weak or overly vague description
 - missing `project:knowledge-base-skills`
 
 ## Development phases
 
-### Phase 1 — design and planning
+### Phase 1 — design and planning ✓
 
 - finalize tag schema
 - finalize article layout
 - choose cache location
 - define validation policy
 
-### Phase 2 — extension skeleton
+### Phase 2 — extension skeleton ✓
 
 - create package structure
 - add TypeScript config
 - create named entrypoint
 - implement `resources_discover`
 
-### Phase 3 — loader pipeline
+### Phase 3 — loader pipeline ✓
 
 - read KB articles
 - detect skill-source articles
@@ -331,21 +315,32 @@ Optional generated files later:
 - generate cache-backed skills
 - return generated skill paths
 
-### Phase 4 — save-skill tool
+### Phase 4 — save-skill tool ✓
 
 - register tool
 - create linked doc and source articles
 - normalize tags and IDs
-- support update flow
+- support both inner and outer frontmatter formats
 
-### Phase 5 — documentation and tests
+### Phase 5 — materialize-skill tool ✓
 
-- README
+- register tool
+- read and validate KB articles
+- write SKILL.md and SOURCE.json
+
+### Phase 6 — local project default ✓
+
+- detect `.pi/` directory in project tree
+- default to `.pi/skills/` for materialization
+- fallback to global cache
+
+### Phase 7 — documentation and tests ✓
+
+- README with tools documentation
 - article-format documentation
-- smoke tests for generation and discovery
-- validation docs and examples
+- tests for discovery and tools
 
-### Phase 6 — install and iterate
+### Phase 8 — install and iterate
 
 - install as a pi extension
 - verify `/reload` picks up KB-backed skills
@@ -353,9 +348,9 @@ Optional generated files later:
 
 ## Open questions
 
-1. Should the skill-source article body be **only** raw skill markdown, or should it allow wrapper sections around the skill payload?
-2. Should the save tool accept doc content directly, or create a minimal doc article and let humans expand it later?
-3. What cache location is best for portability and cleanup?
+1. ~~Should the skill-source article body be only raw skill markdown, or should it allow wrapper sections around the skill payload?~~ Resolved: raw skill markdown with optional inner frontmatter
+2. ~~Should the save tool accept doc content directly, or create a minimal doc article and let humans expand it later?~~ Resolved: accepts optional doc content, auto-generates when absent
+3. ~~What cache location is best for portability and cleanup?~~ Resolved: project-local `.pi/skills/` with fallback to `~/.pi/agent/skills/`
 4. Should disabled skills remain generated but hidden, or be omitted entirely from generated skill paths?
 5. Should the extension support one doc article for multiple skill variants in later versions?
 6. Should the loader tolerate malformed articles with warnings, or skip aggressively in strict mode?
@@ -363,4 +358,4 @@ Optional generated files later:
 
 ## Recommended next step
 
-Create the extension scaffold in this workspace and implement the loader first, then add the save-skill tool after the generation path is validated.
+Install the extension into pi and verify that `kb_save_skill` and `kb_materialize_skill` work in a live session, and that `resources_discover` picks up KB-backed skills on reload.

@@ -1,0 +1,26 @@
+flowchart TD
+    A[Execute kb_fix_skill] --> B{fixTags?}
+    B -->|Yes| C[Check required tags]
+    C --> D{Missing any?}
+    D -->|Yes| E[Add missing tags:<br/>type, kind, skill_ref,<br/>skill_name, audience,<br/>format, source]
+    D -->|No| F[Skip tag fix]
+    
+    B -->|No| F
+    
+    F --> G{fixFrontmatter?}
+    G -->|Yes| H[Parse inner frontmatter]
+    H --> I{Has name & description?}
+    I -->|Yes & match| J[No change]
+    I -->|Missing or mismatch| K[Add/repair inner fm<br/>with correct values]
+    G -->|No| J
+    
+    J --> L{enable?}
+    L -->|Yes| M[skill:disabled → skill:enabled]
+    L -->|No| N[Keep existing status]
+    
+    M --> O[Write updated ARTICLE.md]
+    N --> O
+    K --> O
+    E --> O
+    
+    O --> P[Return action report]

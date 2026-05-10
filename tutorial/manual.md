@@ -11,745 +11,676 @@ date: "May 2026"
 **User Manual**
 
 <div class="subtitle">
-A pi extension that discovers, validates, and loads skills stored as knowledge-base articles.
-</div>
-
-<div class="version">
-Version 1.0.0
-</div>
-
-<div class="date">
-May 2026
+Manage pi skills stored as knowledge base articles — save, list, validate, fix, and install skills from the KB to your pi skill directories.
 </div>
 
 </div>
+
+# Table of Contents
+
+- [1. Introduction](#1-introduction)
+- [2. Quick Start Guide](#2-quick-start-guide)
+- [3. Concepts & Architecture](#3-concepts--architecture)
+- [4. Tools Reference](#4-tools-reference)
+  - [4.1 kb_save_skill — Save a Skill](#41-kb_save_skill--save-a-skill-into-the-kb)
+  - [4.2 kb_list_skills — List Skill Articles](#42-kb_list_skills--list-skill-source-articles)
+  - [4.3 kb_install_skill — Install a Skill](#43-kb_install_skill--install-a-skill-to-pi)
+  - [4.4 kb_fix_skill — Repair a Skill](#44-kb_fix_skill--validate-and-repair-a-skill)
+- [5. Skill Article Format](#5-skill-article-format)
+- [6. Validation & Troubleshooting](#6-validation--troubleshooting)
+- [7. Tag Schema Reference](#7-tag-schema-reference)
+- [8. Workflow Diagrams](#8-workflow-diagrams)
+- [9. FAQ](#9-faq)
 
 # 1. Introduction
 
-The **knowledge-base-skills** extension bridges two powerful pi concepts: the **knowledge base** (persistent, tagged articles) and **pi skills** (reusable, loadable instruction sets for the agent).
+**knowledge-base-skills** is a pi extension that lets you manage pi skills as knowledge base articles. Instead of writing SKILL.md files directly into `.pi/agent/skills/`, you store them in the knowledge base as structured articles with metadata tags. The extension provides tools to save, list, validate, repair, and install these articles as runnable pi skills.
 
-Instead of maintaining standalone `SKILL.md` files on disk, you can author skills as knowledge-base articles, tag them appropriately, and let this extension automatically discover, validate, and generate loadable skill directories at every pi reload.
+<div class="tip">**Tip**: This extension follows a save-validate-install workflow. Skills are never auto-loaded — you explicitly save them to the KB, then install them to a project or user skill directory.</div>
 
-## 1.1 What problem does it solve?
+## Key Features
 
-| Problem | Solution |
-|---------|----------|
-| Skills are scattered across the filesystem | Centralize them inside the knowledge base |
-| No easy way to group skills by domain | Use tags (`domain:`, `topic:`) for rich discovery |
-| Hard to document what a skill does | Dual-article model: one human-readable doc, one machine-readable skill source |
-| Manually linking skill doc to skill file | Shared `skill_ref` identity ties them together |
-| No validation before a skill loads | Built-in parser validates frontmatter, tags, and content before generating |
+- **Save** skills as linked KB articles (skill-source + documentation)
+- **List** all skill articles with validation status
+- **Install** skills from KB to pi's skill directories
+- **Fix** broken skill articles (missing tags, damaged frontmatter)
+- **Auto-discover** enabled skills on pi session start
 
-## 1.2 Key concepts
+## Prerequisites
 
-- **Skill-source article** — A KB article tagged with `type:skill`, `kind:skill-source`, `skill:enabled`. Contains valid skill markdown in its body.
-- **Readable doc article** — A KB article tagged with `type:guide`, `kind:skill-doc`. Explains what the skill does, when to use it, and how it works.
-- **Shared identity** — Both articles carry matching `skill_ref` and `skill_name` tags, creating a stable link between them.
-- **Generated skill** — At every pi reload, the extension scans KB articles, extracts valid skill sources, and writes them into a cache directory as ready-to-load skills.
+- pi coding-agent runtime installed
+- Knowledge base extension installed (`~/.pi/knowledge-base/`)
+- The knowledge-base-skills extension installed via `extension_creator`
 
-<div class="image-caption">Fig 1: System architecture — from KB articles to loaded pi skills</div>
+# 2. Quick Start Guide
 
-![System architecture](assets/diagrams/01-system-architecture.png)
+This section walks through creating, saving, and installing a new skill end-to-end.
 
-# 2. Quick Start
+## Step 1: Write a SKILL.md
 
-This section walks you through creating your first knowledge-base-backed skill and making it available to pi.
-
-## 2.1 Prerequisites
-
-- pi coding agent installed and configured
-- The `knowledge-base-skills` extension installed
-- A knowledge base directory at `~/.pi/knowledge-base/` (or custom path via `KB_SKILLS_KB_PATH`)
-
-## 2.2 Create a skill-source article
-
-Create a file at `~/.pi/knowledge-base/my-first-skill-source.md`:
+Create a skill file with embedded frontmatter containing `name` and `description`:
 
 ```markdown
 ---
-title: My First Skill source
-tags:
-  - type:skill
-  - kind:skill-source
-  - skill:enabled
-  - skill_ref:my-first-skill
-  - skill_name:my-first-skill
-  - status:draft
-  - domain:general
+name: code-reviewer
+description: Reviews code for common issues and suggests improvements.
 ---
 
----
-name: my-first-skill
-description: A simple demonstration skill that says hello.
----
+You are a code review expert. When asked to review code, check for:
 
-Hello! This skill is loaded from the knowledge base.
+1. Security vulnerabilities (XSS, injection, etc.)
+2. Performance bottlenecks
+3. Code style violations
+4. Missing error handling
+5. Architectural issues
+
+Provide clear, actionable feedback with code examples.
 ```
 
-<div class="tip">
-**Tip**: The outer frontmatter is for KB metadata (tags, title). The inner frontmatter (second `---` block) is the skill frontmatter — it must include `name` and `description`. Both `name` fields must match `skill_name`.
-</div>
+## Step 2: Save to the Knowledge Base
 
-## 2.3 Reload pi
-
-Run the reload command in pi:
+<div class="tip">**Tip**: Use `scope: local` for project-specific skills (saved to `./knowledge-base/`) or `scope: global` for user-wide skills (saved to `~/.pi/knowledge-base/`).</div>
 
 ```
-/reload
+kb_save_skill
+  skillName: "code-reviewer"
+  skillContent: "---\nname: code-reviewer\ndescription: Reviews code for common issues.\n---\n\nYou are a code review expert..."
+  scope: local
+  tags: "domain:code-review,tool:read"
 ```
 
-The extension hooks into `resources_discover`, scans the KB, validates the article, and generates a skill directory at `~/.cache/pi/kb-skills/my-first-skill/`.
+**Result**: Two articles are created:
+- **Skill-source article**: `code-reviewer-skill-source` — contains the raw SKILL.md
+- **Documentation article**: `code-reviewer-skill` — human-readable reference
 
-## 2.4 Verify the skill is loaded
-
-The generated files look like this:
-
-```
-~/.cache/pi/kb-skills/my-first-skill/
-├── SKILL.md
-└── SOURCE.json
-```
-
-`SOURCE.json` contains a manifest pointing back to the original KB article:
-
-```json
-{
-  "skillName": "my-first-skill",
-  "skillRef": "my-first-skill",
-  "articleSlug": "my-first-skill-source",
-  "articlePath": "/home/immac/.pi/knowledge-base/my-first-skill-source.md"
-}
-```
-
-## 2.5 Create a companion doc article (recommended)
-
-Create `~/.pi/knowledge-base/my-first-skill-doc.md`:
-
-```markdown
----
-title: My First Skill — Documentation
-tags:
-  - project:knowledge-base-skills
-  - type:guide
-  - kind:skill-doc
-  - skill_ref:my-first-skill
-  - skill_name:my-first-skill
-  - audience:human
-  - source:user
-  - status:draft
-  - domain:general
----
-
-## Summary
-
-This is a minimal demonstration skill created during the Quick Start guide.
-
-## Purpose
-
-Show the minimal structure required for a KB-backed skill.
-
-## When to use
-
-- As a template for creating new skills
-- To verify the extension pipeline works end-to-end
-```
-
-Now both articles share `skill_ref:my-first-skill`, forming a linked pair visible in the KB graph.
-
-<div class="image-caption">Fig 2: The dual-article model linking documentation and skill source via a shared skill_ref</div>
-
-![Article model](assets/diagrams/02-article-model.png)
-
-# 3. How It Works
-
-The extension operates in a pipeline of four stages during every pi reload.
-
-## 3.1 Discovery
-
-When pi starts or reloads, it fires the `resources_discover` event. The extension's registered handler:
-
-1. Locates the knowledge base directory
-2. Lists all `.md` files (skipping `.sidecar.md` files)
-3. Reads each article's frontmatter and content
-
-## 3.2 Filtering
-
-Each article is checked for three required tags:
-
-| Tag | Value | Purpose |
-|-----|-------|---------|
-| `type` | `skill` | Identifies the article as a skill entity |
-| `kind` | `skill-source` | Distinguishes from doc-only articles |
-| `skill` | `enabled` | Opt-in flag; articles without this are skipped |
-
-If any required tag is missing, the article is silently skipped.
-
-## 3.3 Validation
-
-Passing articles undergo deeper validation:
-
-1. `skill_ref` tag must be present and non-empty
-2. `skill_name` tag must be present and match `^[a-z0-9]+(-[a-z0-9]+)*$` (≤64 chars)
-3. The article body is parsed for an inner frontmatter block
-4. The inner `name` must match `skill_name` exactly
-5. The inner `description` must be non-empty
-6. The body after the inner frontmatter must be non-empty
-
-Any failure causes the article to be skipped.
-
-## 3.4 Generation
-
-Valid skill sources are materialized into a cache directory:
+## Step 3: Verify the Skill
 
 ```
-<cache-root>/<skill-name>/
-├── SKILL.md      # The raw skill markdown content
-└── SOURCE.json   # Manifest with skill_name, skill_ref, article slug, and path
+kb_list_skills
+  scope: local
+  verbose: true
 ```
 
-The cache directory is wiped and rebuilt on every reload, ensuring generated skills always reflect the current KB state.
+This lists all skill articles in the local KB with their status. Your new skill should appear as enabled and qualified.
 
-## 3.5 Loading
+![Skill lifecycle diagram](assets/diagrams/01-skill-lifecycle.png)
+<div class="image-caption">Fig 1: Complete skill lifecycle from creation to installation</div>
 
-The generated skill paths are returned from `resources_discover`, making pi's skill loader discover them as runtime skills — exactly as if they were hand-written `SKILL.md` directories.
-
-<div class="image-caption">Fig 3: The complete lifecycle from authoring to loaded skill</div>
-
-![Lifecycle](assets/diagrams/04-lifecycle.png)
-
-# 4. Article Model
-
-Each skill in the knowledge base is represented by **two articles** sharing a common identity.
-
-## 4.1 Readable Documentation Article
-
-**Purpose**: Explain the skill to humans — what it does, when to use it, examples, caveats, and maintenance notes.
-
-**Required tags**:
-
-| Tag | Value |
-|-----|-------|
-| `project` | `knowledge-base-skills` |
-| `type` | `guide` |
-| `kind` | `skill-doc` |
-| `audience` | `human` |
-| `source` | `user` |
-| `skill_ref` | `<shared-id>` |
-| `skill_name` | `<name>` |
-
-**Recommended content sections**:
-
-- Summary
-- Purpose
-- When to use
-- Examples
-- Related tools / skills
-- Pointer to skill-source article (by `skill_ref`)
-
-## 4.2 Skill-Source Article
-
-**Purpose**: Hold the canonical machine-oriented skill markdown that the extension transforms into a loadable `SKILL.md`.
-
-**Required tags**:
-
-| Tag | Value |
-|-----|-------|
-| `project` | `knowledge-base-skills` |
-| `type` | `skill` |
-| `kind` | `skill-source` |
-| `skill` | `enabled` |
-| `audience` | `agent` |
-| `format` | `agent-skill` |
-| `source` | `user` |
-| `skill_ref` | `<shared-id>` |
-| `skill_name` | `<name>` |
-
-**Body requirement**: The article body must contain valid skill markdown with an inner frontmatter block:
-
-```markdown
----
-name: <skill-name-matching-tag>
-description: <non-empty description>
----
-
-... skill instructions, tools, guidelines ...
-```
-
-## 4.3 Shared Identity
-
-The `skill_ref` tag is the glue. It allows:
-
-- One doc article to point to one skill-source article
-- Easy grouping via KB queries (`skill_ref:my-skill`)
-- Future support for variants or alternate versions
-
-The `skill_name` tag must match exactly between both articles, and must also match the inner frontmatter `name` in the skill-source article.
-
-<div class="image-caption">Fig 4: Tag schema — required and optional tags for both article types</div>
-
-![Tag schema](assets/diagrams/03-tag-schema.png)
-
-# 5. Tag Schema
-
-Tags serve a dual purpose: filtering for the extension logic, and creating meaningful graph connections in the knowledge base.
-
-## 5.1 Required tags — skill-source article
-
-| Tag | Value | Checked by extension? |
-|-----|-------|-----------------------|
-| `type` | `skill` | Yes |
-| `kind` | `skill-source` | Yes |
-| `skill` | `enabled` | Yes |
-| `skill_ref` | `<id>` | Yes (must exist) |
-| `skill_name` | `<name>` | Yes (must be valid) |
-| `project` | `knowledge-base-skills` | No (soft requirement) |
-| `audience` | `agent` | No |
-| `format` | `agent-skill` | No |
-| `source` | `user` | No |
-
-## 5.2 Required tags — doc article
-
-| Tag | Value | Checked by extension? |
-|-----|-------|-----------------------|
-| `type` | `guide` | No |
-| `kind` | `skill-doc` | No |
-| `skill_ref` | `<id>` | No |
-| `skill_name` | `<name>` | No |
-| `project` | `knowledge-base-skills` | No |
-| `audience` | `human` | No |
-| `source` | `user` | No |
-
-## 5.3 Optional enrichment tags
-
-These tags are encouraged for better discovery and graph relationships:
-
-| Tag family | Examples |
-|------------|----------|
-| Lifecycle | `status:draft`, `status:stable`, `status:deprecated` |
-| Ownership | `owner:<person-or-team>` |
-| Domain | `domain:debugging`, `domain:web`, `domain:knowledge-base` |
-| Tool | `tool:playwright`, `tool:bash`, `tool:read`, `tool:web-search` |
-| Topic | `topic:screenshots`, `topic:playwright`, `topic:tagging` |
-| Level | `level:beginner`, `level:intermediate`, `level:advanced` |
-| Relationship | `rel:documentation`, `rel:runtime-source` |
-
-## 5.4 Tag format
-
-Tags use the `key:value` format in YAML frontmatter lists:
-
-```yaml
-tags:
-  - type:skill
-  - kind:skill-source
-  - skill:enabled
-```
-
-The extension also accepts object-style tags:
-
-```yaml
-tags:
-  type: skill
-  kind: skill-source
-```
-
-# 6. Creating a Skill
-
-This section describes the full workflow for authoring a new skill in the knowledge base.
-
-## 6.1 Decide on a shared identity
-
-Choose a unique, URL-friendly `skill_ref` and `skill_name`. They can be identical:
-
-- `skill_ref:debug-with-screenshots`
-- `skill_name:debug-with-screenshots`
-
-The `skill_name` must match `^[a-z0-9]+(-[a-z0-9]+)*$` and be ≤64 characters.
-
-## 6.2 Write the skill-source article
-
-Create a new file in your KB directory. The filename should end with `-source.md` for clarity (e.g., `debug-with-screenshots-source.md`).
-
-```markdown
----
-title: Debug with Screenshots — Skill Source
-tags:
-  - type:skill
-  - kind:skill-source
-  - skill:enabled
-  - skill_ref:debug-with-screenshots
-  - skill_name:debug-with-screenshots
-  - status:draft
-  - domain:debugging
-  - tool:playwright
----
-
----
-name: debug-with-screenshots
-description: Captures full-page screenshots of web pages using Playwright for visual debugging.
----
-
-You are an expert in Playwright screenshot debugging.
-
-When asked to debug a page visually:
-
-1. Install Playwright if not present: `npx playwright install chromium`
-2. Write a script that navigates to the page and captures a full-page screenshot
-3. Save the screenshot and describe what you see
-4. Highlight any visual anomalies
-
-Use `chromium.launch({ headless: true })` and `page.screenshot({ fullPage: true })`.
-```
-
-<div class="warning">
-**Important**: The inner frontmatter `name` must exactly match the `skill_name` tag. If they differ, the article is rejected.
-</div>
-
-## 6.3 Write the companion doc article
-
-Create a second file (e.g., `debug-with-screenshots-doc.md`):
-
-```markdown
----
-title: Debug with Screenshots — Documentation
-tags:
-  - project:knowledge-base-skills
-  - type:guide
-  - kind:skill-doc
-  - skill_ref:debug-with-screenshots
-  - skill_name:debug-with-screenshots
-  - audience:human
-  - source:user
-  - status:draft
-  - domain:debugging
-  - tool:playwright
----
-
-## Summary
-
-Captures full-page screenshots using Playwright to aid visual debugging of web pages.
-
-## Purpose
-
-When the agent needs to understand the visual state of a web page — layout issues, missing elements, styling problems — this skill automates screenshot capture and analysis.
-
-## When to use
-
-- Web page rendering looks incorrect
-- Need visual confirmation of DOM changes
-- Debugging responsive layout issues
-- Verifying UI state after interactions
-
-## Related
-
-- Debug with Screenshots (skill source) — `skill_ref:debug-with-screenshots`
-```
-
-## 6.4 Reload and verify
+## Step 4: Install to pi
 
 ```
-/reload
+kb_install_skill
+  articleSlug: "code-reviewer-skill-source"
+  scope: local
 ```
 
-Check the cache directory:
+This writes `SKILL.md` and `SOURCE.json` to `.pi/agent/skills/code-reviewer/`.
 
-```bash
-ls ~/.cache/pi/kb-skills/debug-with-screenshots/
-# → SKILL.md  SOURCE.json
+## Step 5: Reload pi
+
+Run `/reload` in pi to discover the new skill. The extension automatically refreshes the skill cache from the KB on the `resources_discover` event.
+
+## Step 6: Fix Issues (if any)
+
+If `kb_list_skills` shows validation errors for your skill:
+
+```
+kb_fix_skill
+  articleSlug: "code-reviewer-skill-source"
+  fixTags: true
+  fixFrontmatter: true
+  enable: true
 ```
 
-## 6.5 Iterate
+This adds any missing required tags, repairs the inner frontmatter, and ensures the skill is enabled.
 
-Edit the KB article directly, then reload pi. The cache is rebuilt from scratch on every reload, so changes are reflected immediately.
+# 3. Concepts & Architecture
 
-# 7. Extension Architecture
+## Two-Article Model
 
-## 7.1 Module overview
+Each skill is represented by two linked KB articles sharing a `skill_ref` tag:
 
-The extension is structured as a standard pi extension with several internal modules:
+| Article | Tags | Purpose |
+|---------|------|---------|
+| **Skill-source article** | `type:skill`, `kind:skill-source`, `skill:enabled` | Machine-oriented — contains the raw SKILL.md body with embedded frontmatter |
+| **Documentation article** | `type:guide`, `kind:skill-doc` | Human-oriented — explains usage, examples, links to source |
+
+![Article data model](assets/diagrams/02-article-data-model.png)
+<div class="image-caption">Fig 2: Structure of a KB article with outer frontmatter, tags, and inner frontmatter</div>
+
+## Inner vs Outer Frontmatter
+
+Skills use two layers of frontmatter:
+
+1. **Outer frontmatter** (article level): `title`, `tags`, `created`, `modified` — parsed by the knowledge base system
+2. **Inner frontmatter** (embedded in body): `name`, `description` — parsed by the skill loader
+
+The loader prefers inner frontmatter. If absent, it falls back to the outer article frontmatter fields.
+
+## Module Architecture
+
+The extension consists of six modules coordinated by the entry point:
 
 | Module | File | Responsibility |
 |--------|------|----------------|
-| Entrypoint | `index.ts` | Hooks `resources_discover`, calls loader |
-| Loader | `loader.ts` | Orchestrates discovery → validation → generation pipeline |
-| KB reader | `kb.ts` | Reads `.md` files from the KB directory, parses frontmatter |
-| Skill parser | `skill-source.ts` | Validates tags, parses inner frontmatter, returns `SkillSourceRecord` or null |
-| Cache writer | `cache.ts` | Wipes and rewrites the cache directory with generated skill folders |
-| Types | `types.ts` | Shared TypeScript interfaces |
+| **index.ts** | Entry | Registers all tools and the `resources_discover` hook |
+| **kb.ts** | KB I/O | Read, write, list articles; slug generation; path resolution |
+| **save-skill.ts** | Save | `kb_save_skill` — creates two linked articles |
+| **skill-materialize.ts** | Install | `kb_install_skill` — writes SKILL.md + SOURCE.json |
+| **list-skills.ts** | List | `kb_list_skills` — scans, validates, formats |
+| **fix-skill.ts** | Fix | `kb_fix_skill` — repairs tags and frontmatter |
+| **skill-source.ts** | Parser | Validates article tags and parses metadata |
+| **cache.ts** | Cache | Writes SKILL.md files with proper frontmatter |
+| **loader.ts** | Discovery | Orchestrates KB scan → parse → cache pipeline |
 
-## 7.2 Data flow
+![System architecture](assets/diagrams/04-system-architecture.png)
+<div class="image-caption">Fig 3: Architecture of the knowledge-base-skills extension, showing module relationships</div>
+
+## Discovery Pipeline
+
+On session start, the `resources_discover` event triggers:
 
 ```
-resources_discover event
-        │
-        ▼
-getKnowledgeBaseSkillsConfig()
-  - reads env vars or defaults
-  - returns { knowledgeBasePath, cacheRoot }
-        │
-        ▼
-refreshSkillCache(config)
-        │
-        ├── discoverSkillSources(config)
-        │       ├── listArticleFiles(kbPath)      ← kb.ts
-        │       ├── readArticle(slug, kbPath)      ← kb.ts
-        │       └── parseSkillSource(article)      ← skill-source.ts
-        │
-        ├── writeSkillCache(cacheRoot, sources)    ← cache.ts
-        │       ├── rm -rf cacheRoot
-        │       ├── mkdir -p cacheRoot/<skillName>/
-        │       ├── write SKILL.md
-        │       └── write SOURCE.json
-        │
-        └── returns string[] of generated paths
-                │
-                ▼
-        resources_discover → { skillPaths }
+resources_discover
+  → loader.refreshSkillCache()
+    → kb.listArticleFiles()          # Scan KB for .md files
+    → kb.readArticle()               # Read + parse each article
+    → skill-source.parseSkillSource()# Validate tags, extract metadata
+    → cache.writeSkillCache()        # Write SKILL.md + SOURCE.json
+  → returns { skillPaths }           # pi loads these as skills
 ```
 
-## 7.3 Key interfaces
+## Tag-Based Qualification
 
-```typescript
-interface KnowledgeBaseArticle {
-  slug: string;
-  title: string;
-  content: string;
-  tags: ValueTag[];
-  filePath: string;
-}
+An article qualifies as a skill source only if it has all required tags:
 
-interface SkillSourceRecord {
-  article: KnowledgeBaseArticle;
-  skillName: string;
-  skillDescription: string;
-  skillContent: string;
-}
-
-interface KnowledgeBaseSkillsConfig {
-  knowledgeBasePath: string;
-  cacheRoot: string;
-}
+```
+type:skill        + kind:skill-source  → is a skill definition
+skill:enabled                          → is active for auto-discovery
+skill_ref:<id>    + skill_name:<name>  → provides runtime metadata
+audience:agent    + format:agent-skill → machine-oriented content
+source:user                            → origin tracking
 ```
 
-## 7.4 Extension registration
+# 4. Tools Reference
 
-The extension is registered in `package.json`:
+## 4.1 kb_save_skill — Save a Skill into the KB
+
+Creates a skill-source article and a companion documentation article in the knowledge base.
+
+### Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `skillName` | string | — | Lowercase kebab-case name (e.g. `code-reviewer`) |
+| `skillContent` | string | — | Full SKILL.md with embedded `name` and `description` frontmatter |
+| `docTitle` | string? | — | Human-friendly title for the documentation article |
+| `docContent` | string? | — | Custom markdown for the documentation article |
+| `scope` | `"local"` / `"global"` | `"local"` | Which knowledge base to save into |
+| `tags` | string? | — | Extra comma-separated `key:value` tags |
+| `enabled` | boolean | `true` | Whether the skill is enabled for loading |
+
+### Example
+
+```
+kb_save_skill
+  skillName: "my-analyzer"
+  skillContent: "---\nname: my-analyzer\ndescription: Analyzes code structure\n---\n\nYou analyze code..."
+  scope: local
+  tags: "domain:code-analysis,tool:read"
+  enabled: true
+```
+
+### Output
+
+```
+Saved skill: my-analyzer
+  Skill-source article: my-analyzer-skill-source
+  Documentation article: my-analyzer-skill
+```
+
+## 4.2 kb_list_skills — List Skill-Source Articles
+
+Scans the knowledge base for skill-source articles and displays their status, description, and any validation issues.
+
+### Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `scope` | `"local"` / `"global"` / `"all"` | `"all"` | Which KB scope(s) to scan |
+| `status` | `"enabled"` / `"disabled"` / `"all"` | `"all"` | Filter by enabled/disabled |
+| `verbose` | boolean | `false` | Show detailed validation issues per skill |
+
+### Example
+
+```
+kb_list_skills scope: global status: enabled verbose: true
+```
+
+### Output (verbose)
+
+```
+Found 2 skill-source article(s):
+
+  ✅ [✓] code-reviewer (local)
+       Slug: code-reviewer-skill-source
+       Description: Reviews code for common issues and suggests improvements.
+       Ref: code-reviewer
+       Status: enabled
+
+  ⛔ [✗] deprecated-analyzer (global)
+       Slug: deprecated-analyzer-skill-source
+       Description: An old analyzer.
+       Ref: deprecated-analyzer
+       Status: disabled
+       🔴 [tag:audience] Missing required tag "audience" with value "agent"
+       🔴 [name] No skill name found
+
+Summary: 1 qualified, 1 enabled, 1 with errors
+```
+
+<div class="tip">**Tip**: Use the non-verbose output for a quick overview, then enable verbose mode to see exactly what needs fixing.</div>
+
+## 4.3 kb_install_skill — Install a Skill to pi
+
+Materializes a KB skill-source article into a pi skill directory as `SKILL.md` + `SOURCE.json`.
+
+### Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `articleSlug` | string | — | Slug of the skill-source article in the KB |
+| `scope` | `"local"` / `"global"` | `"local"` | Install target directory |
+
+### Install Targets
+
+| Scope | Directory |
+|-------|-----------|
+| `local` (default) | `<project>/.pi/agent/skills/<name>/` |
+| `global` | `~/.pi/agent/skills/<name>/` |
+
+### Example
+
+```
+kb_install_skill
+  articleSlug: "code-reviewer-skill-source"
+  scope: global
+```
+
+### Output
+
+```
+Materialized skill: code-reviewer
+  Output: /home/user/.pi/agent/skills/code-reviewer/SKILL.md
+```
+
+### Generated Files
+
+```
+~/.pi/agent/skills/code-reviewer/
+├── SKILL.md       ← The skill content with proper frontmatter
+└── SOURCE.json    ← Metadata linking back to the KB article
+```
+
+Example `SOURCE.json`:
 
 ```json
 {
-  "pi": {
-    "extensions": ["./knowledge-base-skills.ts"]
-  }
+  "skillName": "code-reviewer",
+  "skillRef": "code-reviewer",
+  "articleSlug": "code-reviewer-skill-source",
+  "articlePath": "/home/user/.pi/knowledge-base/articles/code-reviewer-skill-source/ARTICLE.md",
+  "materializedAt": "2026-05-10T12:00:00.000Z"
 }
 ```
 
-The barrel file (`knowledge-base-skills.ts`) re-exports from `dist/index.js`, which calls `registerKnowledgeBaseSkills(pi)`.
+## 4.4 kb_fix_skill — Validate and Repair a Skill
 
-# 8. Configuration
+Analyzes a skill-source article, identifies missing required tags and frontmatter issues, and repairs them automatically.
 
-## 8.1 Environment variables
+### Parameters
 
-| Variable | Default | Purpose |
-|----------|---------|---------|
-| `KB_SKILLS_KB_PATH` | `~/.pi/knowledge-base` | Path to the knowledge base directory |
-| `KB_SKILLS_CACHE_PATH` | `~/.cache/pi/kb-skills` | Path to the generated skill cache |
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `articleSlug` | string | — | Slug of the skill-source article to fix |
+| `fixTags` | boolean | `true` | Add missing required tags |
+| `fixFrontmatter` | boolean | `true` | Add or repair inner embedded frontmatter |
+| `enable` | boolean | — | Change `skill:disabled` → `skill:enabled` |
+| `name` | string? | — | Override skill name (tag + frontmatter) |
+| `description` | string? | — | Override description (frontmatter only) |
+| `source` | string? | `"user"` | Override source tag value |
 
-## 8.2 Override example
+### What Gets Fixed
 
-```bash
-export KB_SKILLS_KB_PATH=/path/to/custom/kb
-export KB_SKILLS_CACHE_PATH=/path/to/custom/cache
-```
+**When `fixTags: true`**:
+- Adds `type:skill` if missing
+- Adds `kind:skill-source` if missing
+- Adds `skill_ref:<slug>` if missing (uses article slug)
+- Adds `skill_name:<name>` if missing (uses provided name or slug)
+- Adds `audience:agent` if missing
+- Adds `format:agent-skill` if missing
+- Adds `source:user` if missing (or custom value)
+- If no `skill` tag exists, adds `skill:disabled` (use `enable:true` to override)
 
-## 8.3 Cache directory
+**When `fixFrontmatter: true`**:
+- If no inner frontmatter block exists, adds one with `name` and `description`
+- If inner frontmatter exists but `name` is missing or mismatched, corrects it
+- If inner frontmatter exists but `description` is missing or mismatched, corrects it
+- Handles malformed inner frontmatter (e.g., missing closing `---`)
 
-The cache directory is **completely rebuilt** on every pi reload. Any manual edits to files inside `<cache>/<skill-name>/` will be overwritten. Always edit the source KB article instead.
+**When `enable: true`**:
+- Changes `skill:disabled` → `skill:enabled`
 
-Cache structure:
+![Validation and fix flow](assets/diagrams/03-validation-flow.png)
+<div class="image-caption">Fig 4: Decision flow for `kb_fix_skill` — shows how each repair option is applied</div>
 
-```
-<KB_SKILLS_CACHE_PATH>/
-├── <skill-name-1>/
-│   ├── SKILL.md
-│   └── SOURCE.json
-├── <skill-name-2>/
-│   ├── SKILL.md
-│   └── SOURCE.json
-└── ...
-```
-
-# 9. Validation Rules
-
-## 9.1 Hard requirements (reject if missing)
-
-| Rule | Condition |
-|------|-----------|
-| Required tags | Article must have `type:skill`, `kind:skill-source`, `skill:enabled` |
-| `skill_ref` | Must be present and non-empty |
-| `skill_name` | Must match `^[a-z0-9]+(-[a-z0-9]+)*$`, ≤64 chars |
-| Inner frontmatter `name` | Must match `skill_name` exactly |
-| Inner frontmatter `description` | Must be non-empty |
-| Body content | Must be non-empty after inner frontmatter |
-
-## 9.2 Soft requirements (warnings only)
-
-These are not enforced by the parser but are strongly recommended:
-
-- Missing companion doc article (same `skill_ref`)
-- Missing `project:knowledge-base-skills` tag
-- Missing `status:*` tag
-- Weak or overly vague description
-- `skill_name` mismatch between article tags — if the tag says one thing but the embedded frontmatter says another, the article **is** rejected (this is a hard rule)
-
-## 9.3 Validation summary table
-
-| Check | Hard | Soft | What happens on failure |
-|-------|------|------|-------------------------|
-| `type:skill` | ✓ | | Article skipped |
-| `kind:skill-source` | ✓ | | Article skipped |
-| `skill:enabled` | ✓ | | Article skipped |
-| `skill_ref` exists | ✓ | | Article skipped |
-| `skill_name` valid | ✓ | | Article skipped |
-| Inner frontmatter parses | ✓ | | Article skipped |
-| Inner `name` matches `skill_name` | ✓ | | Article skipped |
-| Inner `description` non-empty | ✓ | | Article skipped |
-| Body non-empty | ✓ | | Article skipped |
-| Companion doc exists | | ✓ | Warning (future) |
-| `status:*` present | | ✓ | Logged |
-| `project:*` present | | ✓ | Logged |
-
-# 10. Tool Reference
-
-## 10.1 Planned tools
-
-The extension is designed with a **tool-first interface**. The following tools are planned for future release:
-
-**kb_save_skill** (planned)
-
-Creates or updates both a readable doc article and a skill-source article in the knowledge base, normalizing tags and establishing the shared identity.
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `skillName` | string | Yes | Runtime skill name |
-| `skillDescription` | string | Yes | Description for skill frontmatter |
-| `skillContent` | string | Yes | Raw skill markdown body |
-| `docTitle` | string | No | Title for the doc article |
-| `docContent` | string | No | Content for the doc article |
-| `sharedRef` | string | No | Auto-generated if absent |
-| `tags` | string | No | Comma-separated `key:value` pairs |
-| `status` | string | No | e.g. `draft`, `stable` |
-| `enabled` | boolean | No | Whether `skill:enabled` is set |
-
-**kb_list_skills** (planned)
-
-Lists all skill-source articles currently in the KB.
-
-**kb_export_skill** (planned)
-
-Exports a generated skill back to a standalone `SKILL.md` file.
-
-**kb_enable_skill** / **kb_disable_skill** (planned)
-
-Toggle the `skill:enabled` tag on a skill-source article.
-
-**kb_validate_skills** (planned)
-
-Runs validation against all KB articles and reports issues.
-
-# 11. Development
-
-## 11.1 Project structure
+### Example (fix and enable a broken skill)
 
 ```
-knowledge-base-skills/
-├── knowledge-base-skills.ts   # Barrel / entrypoint
-├── package.json               # Dependencies and pi registration
-├── tsconfig.json              # TypeScript config
-├── src/
-│   ├── index.ts               # Extension registration
-│   ├── loader.ts              # Discovery → generation orchestration
-│   ├── kb.ts                  # KB file reading and frontmatter parsing
-│   ├── skill-source.ts        # Skill content validation and extraction
-│   ├── cache.ts               # Cache directory management
-│   └── types.ts               # Shared interfaces
-├── dist/                      # Compiled output
-├── test/
-│   └── loader.test.mjs        # Integration test
-└── tutorial/                  # This user manual
+kb_fix_skill
+  articleSlug: "deprecated-analyzer-skill-source"
+  fixTags: true
+  fixFrontmatter: true
+  enable: true
+  name: "deprecated-analyzer"
+  description: "A repaired code analyzer skill"
 ```
 
-## 11.2 Build
+### Example Output
 
-```bash
-npm run build
+```
+Fixed skill article: deprecated-analyzer-skill-source
+  File: /home/user/.pi/knowledge-base/articles/deprecated-analyzer-skill-source/ARTICLE.md
+  Actions (4):
+    • tag_added: Added tag "audience:agent"
+    • tag_enabled: Changed skill:disabled → skill:enabled
+    • frontmatter_added: Added missing name and description to inner frontmatter
+    • tag_added: Added tag "format:agent-skill"
 ```
 
-Compiles TypeScript from `src/` to `dist/`.
+# 5. Skill Article Format
 
-## 11.3 Test
+## File Structure
 
-```bash
-npm test
+```
+~/.pi/knowledge-base/articles/<slug>/
+└── ARTICLE.md
 ```
 
-Builds and runs the Node test suite. The test creates a temporary KB with one valid skill-source article and one non-skill article, verifies that only the valid one is discovered and cached, then cleans up.
+## Outer Frontmatter
 
-## 11.4 Key design decisions
+The outer frontmatter (parsed by the KB system) uses YAML with `title` and `tags` fields:
 
-| Decision | Rationale |
-|----------|-----------|
-| Dual-article model | Separates human documentation from machine skill content |
-| Cache rebuilt on every reload | No stale state; always reflects current KB |
-| Hard validation rules | Prevents invalid skills from loading silently |
-| Silent skip for non-skills | Non-skill articles are never logged as errors |
-| `skill_ref` as linker | Simple, queryable, extensible to multi-article groups |
+```yaml
+---
+title: my-skill — Skill Source
+tags:
+  - 'type:skill'
+  - 'kind:skill-source'
+  - 'skill:enabled'
+  - 'skill_ref:my-skill'
+  - 'skill_name:my-skill'
+  - 'audience:agent'
+  - 'format:agent-skill'
+  - 'source:user'
+  - 'domain:code-analysis'
+  - 'tool:read'
+created: '2026-05-10T12:00:00.000Z'
+modified: '2026-05-10T12:00:00.000Z'
+---
+```
 
-## 11.5 Future enhancements
+## Inner Frontmatter (Embedded)
 
-- **Save-skill tool**: CLI for creating skill articles from within pi
-- **Skill listing and search**: Query KB for skills by domain, status, tool
-- **Disabled skill handling**: Generate but hide vs. omit entirely
-- **Asset/reference support**: Copy referenced files into generated skill directories
-- **Multi-variant skills**: One doc article for multiple skill-source variants
+The body contains the SKILL.md content with its own frontmatter:
 
-# 12. FAQ
+```markdown
+---
+name: my-skill
+description: Analyzes code structure and suggests improvements.
+---
 
-**Q: My skill isn't loading after `/reload`. How do I debug?**
+You are a code analysis expert. When asked to review code...
+```
 
-A: Check these common issues:
-1. Are all three required tags present? (`type:skill`, `kind:skill-source`, `skill:enabled`)
-2. Does `skill_name` match the inner frontmatter `name`?
-3. Is `skill_name` in lowercase with hyphens (no spaces, no uppercase)?
-4. Is there a non-empty `description` and body content?
-5. Check the cache directory — if the skill folder didn't appear, validation failed.
+The inner frontmatter block starts at the beginning of the article body, delimited by `---`. The loader extracts `name` and `description` from this block when materializing the skill.
 
-**Q: Can I have multiple skill-source articles with the same `skill_ref`?**
+## Complete Example
 
-A: Currently no. Each `skill_ref` + `skill_name` pair should be unique. Future versions may support variants.
+```markdown
+---
+title: code-reviewer — Skill Source
+tags:
+  - 'type:skill'
+  - 'kind:skill-source'
+  - 'skill:enabled'
+  - 'skill_ref:code-reviewer'
+  - 'skill_name:code-reviewer'
+  - 'audience:agent'
+  - 'format:agent-skill'
+  - 'source:user'
+  - 'domain:code-review'
+  - 'tool:read'
+created: '2026-05-10T12:00:00.000Z'
+modified: '2026-05-10T12:00:00.000Z'
+---
 
-**Q: What happens if I manually edit files in the cache?**
+---
+name: code-reviewer
+description: Reviews code for common issues and suggests improvements.
+---
 
-A: They will be overwritten on the next `/reload`. Always edit the KB article instead.
+You are a code review expert. When asked to review code, check for:
 
-**Q: Can I use the same `skill_name` in two different skill-source articles?**
+1. Security vulnerabilities (XSS, injection, etc.)
+2. Performance bottlenecks
+3. Code style violations
+4. Missing error handling
+5. Architectural issues
 
-A: No — `skill_name` becomes the directory name. Duplicates would collide in the cache.
+Provide clear, actionable feedback with code examples.
+```
 
-**Q: Does the extension support articles with no inner frontmatter?**
+## When Installed
 
-A: If the article body doesn't contain a valid inner frontmatter with `name` and `description`, it's rejected. The outer (KB) frontmatter alone is not sufficient.
+After installation, the SKILL.md at `.pi/agent/skills/code-reviewer/SKILL.md` looks like:
 
-**Q: How do I temporarily disable a skill without deleting it?**
+```markdown
+---
+name: code-reviewer
+description: Reviews code for common issues and suggests improvements.
+---
 
-A: Remove the `skill:enabled` tag (or change it to `skill:disabled`) and reload. The article will be skipped.
+You are a code review expert. When asked to review code, check for...
 
-**Q: Can I store assets alongside the skill?**
+1. Security vulnerabilities (XSS, injection, etc.)
+2. Performance bottlenecks
+3. Code style violations
+4. Missing error handling
+5. Architectural issues
 
-A: Not yet. The current model generates only `SKILL.md` and `SOURCE.json`. Asset support is planned.
+Provide clear, actionable feedback with code examples.
+```
 
-**Q: What's the difference between `skill_ref` and `skill_name`?**
+The inner frontmatter becomes the outer frontmatter of the installed skill file.
 
-A: `skill_ref` is a stable identifier for linking doc and source articles. `skill_name` is the runtime directory name that pi uses to load the skill. They are often identical but don't have to be.
+# 6. Validation & Troubleshooting
 
-**Q: Does the extension warn me about missing doc articles?**
+## Validation Checklist
 
-A: Not yet. Soft validation warnings (missing companion doc, missing `status` tag) are planned for a future release.
+When you run `kb_list_skills verbose: true`, every skill article is checked against these criteria:
+
+### Hard Requirements
+
+| Check | Severity | Description |
+|-------|----------|-------------|
+| `type:skill` tag present | error | Identifies as a skill definition |
+| `kind:skill-source` tag present | error | Distinguishes from doc articles |
+| `skill:enabled` or `skill:disabled` tag | error | Opt-in flag |
+| `skill_ref` tag non-empty | error | Links source to documentation |
+| `skill_name` tag non-empty | error | Runtime name for the skill |
+| `skill_name` matches `/^[a-z0-9]+(-[a-z0-9]+)*$/` | error | Valid kebab-case, max 64 chars |
+| `audience:agent` tag present | error | Machine-oriented content |
+| `format:agent-skill` tag present | error | Content format marker |
+| `source` tag present | error | Origin tracking |
+| Inner `name` matches `skill_name` | error | Consistency check |
+| Inner or outer `description` non-empty | error | Required metadata |
+| Body content non-empty | error | Skill needs actual content |
+
+### Warnings
+
+| Check | Severity | Description |
+|-------|----------|-------------|
+| Using outer frontmatter instead of inner | warning | Inner frontmatter is preferred |
+| Tag value mismatch (e.g., `type:guide` instead of `type:skill`) | warning | May cause discovery issues |
+
+## Common Issues
+
+### Skill Not Listed
+
+**Symptom**: `kb_list_skills` shows fewer skills than expected.
+
+**Causes and fixes**:
+1. Article lacks `type:skill` and `kind:skill-source` tags
+   - Fix: `kb_fix_skill fixTags: true`
+2. Article is in wrong scope
+   - Use `scope: all` to scan both local and global KB
+3. Article uses flat file format not in `articles/<slug>/` directory
+   - Move to folder-based layout if required
+
+### Skill Not Installing
+
+**Symptom**: `kb_install_skill` returns "not a valid skill-source article".
+
+**Causes and fixes**:
+1. Missing required tags
+   - Run `kb_list_skills verbose: true` to see what's missing
+   - Fix: `kb_fix_skill fixTags: true`
+2. Article slug is wrong
+   - Check slug with `kb_list_skills`
+3. Article is disabled
+   - Use `kb_fix_skill enable: true` or materialize with `kb_install_skill` (accepts disabled)
+
+### Broken Frontmatter
+
+**Symptom**: Installed SKILL.md has no `name` or `description`.
+
+**Causes and fixes**:
+1. Inner frontmatter block is missing from article body
+   - Fix: `kb_fix_skill fixFrontmatter: true`
+2. Inner frontmatter has no closing `---`
+   - Fix: `kb_fix_skill fixFrontmatter: true` (handles malformed blocks)
+3. Name/description values are in outer frontmatter only
+   - `kb_fix_skill fixFrontmatter: true` migrates them to inner frontmatter
+4. Name doesn't match skill_name tag
+   - Fix: `kb_fix_skill name: "<correct-name>" fixFrontmatter: true`
+
+### "description is required" Error
+
+If pi shows this error after installing:
+1. Use `kb_fix_skill` to add missing frontmatter
+2. Re-install with `kb_install_skill`
+3. Run `/reload` in pi
+
+### Pipe in pi
+
+<div class="note">The skill article in the KB and the installed SKILL.md are separate files. After fixing the KB article, you must re-install the skill for the changes to take effect.</div>
+
+# 7. Tag Schema Reference
+
+## Skill-Source Article Tags
+
+| Tag | Required | Value | Purpose |
+|-----|----------|-------|---------|
+| `type` | Yes | `skill` | Identifies as a skill definition |
+| `kind` | Yes | `skill-source` | Distinguishes from doc articles |
+| `skill` | Yes | `enabled` or `disabled` | Opt-in flag |
+| `skill_ref` | Yes | `<id>` | Links source + doc articles |
+| `skill_name` | Yes | `<kebab-name>` | Runtime name |
+| `audience` | Yes | `agent` | Machine-oriented |
+| `format` | Yes | `agent-skill` | Content format |
+| `source` | Yes | `user` | Origin tracking |
+
+## Documentation Article Tags
+
+| Tag | Required | Value | Purpose |
+|-----|----------|-------|---------|
+| `type` | Yes | `guide` | Identifies as guidance |
+| `kind` | Yes | `skill-doc` | Distinguishes from source |
+| `skill_ref` | Yes | `<id>` | Links to source article |
+| `skill_name` | Yes | `<kebab-name>` | Reference to skill |
+| `audience` | Yes | `human` | Human-readable |
+
+## Recommended Tags
+
+| Tag | Example | Purpose |
+|-----|---------|---------|
+| `status` | `stable`, `draft` | Lifecycle tracking |
+| `domain` | `code-review`, `testing` | Topic discovery |
+| `tool` | `read`, `bash`, `write` | Related tools |
+| `project` | `knowledge-base-skills` | Project association |
+| `level` | `beginner`, `advanced` | Expertise level |
+
+# 8. Workflow Diagrams
+
+## Skill Lifecycle
+
+The diagram below shows the complete path from authoring a SKILL.md to running it in pi:
+
+![Skill lifecycle workflow](assets/diagrams/01-skill-lifecycle.png)
+<div class="image-caption">Fig 5: End-to-end skill lifecycle: author → save → validate → fix → install → reload</div>
+
+1. **Author**: Write a SKILL.md with `name` and `description` in embedded frontmatter
+2. **Save**: Use `kb_save_skill` to create linked articles in the KB
+3. **Validate**: Run `kb_list_skills` to check for issues
+4. **Fix** (if needed): Use `kb_fix_skill` to repair missing tags or frontmatter
+5. **Install**: Use `kb_install_skill` to materialize into pi's skill directory
+6. **Reload**: `/reload` in pi for the skill to take effect
+
+## Validation Decision Flow
+
+When you run `kb_fix_skill`, the extension follows a systematic repair process:
+
+![Validation flow diagram](assets/diagrams/03-validation-flow.png)
+<div class="image-caption">Fig 6: Decision tree for `kb_fix_skill` — tags first, then frontmatter, then enablement</div>
+
+## System Architecture
+
+The extension's internal module structure:
+
+![System architecture diagram](assets/diagrams/04-system-architecture.png)
+<div class="image-caption">Fig 7: Module relationships within the extension and with external systems</div>
+
+# 9. FAQ
+
+**Q: What happens if I save a skill with `enabled: false`?**
+
+A: The skill is saved to the KB but skipped by auto-discovery. Use `kb_fix_skill enable: true` later, or explicitly install it with `kb_install_skill`.
+
+**Q: Can I store skills in both local and global KB?**
+
+A: Yes. Use `scope: local` to save to your project's `./knowledge-base/` directory. Use `scope: global` to save to `~/.pi/knowledge-base/`. The `kb_list_skills` tool can scan either or both.
+
+**Q: What's the difference between inner and outer frontmatter?**
+
+A: The outer frontmatter is at the KB article level and contains system metadata like `title`, `tags`, `created`, `modified`. The inner frontmatter is embedded in the article body and contains the skill's `name` and `description`. The loader prefers inner frontmatter for skill metadata.
+
+**Q: How do I update an existing skill?**
+
+A: Edit the ARTICLE.md in the KB directly, then run `kb_install_skill` again to re-materialize. The skill file in `.pi/agent/skills/` is regenerated with the updated content.
+
+**Q: Why does `kb_fix_skill` add `skill:disabled` by default?**
+
+A: Safety — the tool never enables a skill without explicit consent. Use `enable: true` to flip it to `skill:enabled`.
+
+**Q: Can I use `kb_fix_skill` as a dry run?**
+
+A: Yes — run `kb_list_skills verbose: true` first to see all validation issues without making changes. Then decide which `kb_fix_skill` options to apply.
+
+**Q: What if my KB is at a custom path?**
+
+A: Set the `KB_SKILLS_KB_PATH` environment variable to override the default `~/.pi/knowledge-base/`. All tools respect this variable.
+
+**Q: How do I uninstall a skill?**
+
+A: Remove the skill directory from `.pi/agent/skills/<name>/` and run `/reload` in pi. Optionally, delete the KB articles or mark the skill as `skill:disabled`.

@@ -1,0 +1,44 @@
+flowchart TD
+    subgraph PiRuntime["Pi Runtime"]
+        API["Extension API"]
+        SKILLS["Skill Loader"]
+    end
+
+    subgraph Ext["knowledge-base-skills Extension"]
+        INDEX["index.ts<br/>Tool Registration"]
+        SAVE["save-skill.ts<br/>kb_save_skill"]
+        INSTALL["skill-materialize.ts<br/>kb_install_skill"]
+        LIST["list-skills.ts<br/>kb_list_skills"]
+        FIX["fix-skill.ts<br/>kb_fix_skill"]
+        LOADER["loader.ts<br/>Discovery & Cache"]
+        SOURCE["skill-source.ts<br/>Parsing & Validation"]
+        CACHE["cache.ts<br/>SKILL.md Writer"]
+        KB["kb.ts<br/>Read/Write Articles"]
+    end
+
+    subgraph KnowledgeBase[".pi/knowledge-base/"]
+        ARTICLES["articles/&lt;slug&gt;/ARTICLE.md"]
+    end
+
+    subgraph SkillsDir[".pi/agent/skills/"]
+        SKILL_DIR["&lt;name&gt;/SKILL.md<br/>&lt;name&gt;/SOURCE.json"]
+    end
+
+    INDEX --> SAVE
+    INDEX --> INSTALL
+    INDEX --> LIST
+    INDEX --> FIX
+    API --> INDEX
+    
+    SAVE --> KB
+    INSTALL --> KB
+    LIST --> KB
+    FIX --> KB
+    
+    KB --> ARTICLES
+    INSTALL --> SkillsDir
+    LOADER --> KB
+    LOADER --> SOURCE
+    LOADER --> CACHE
+    CACHE --> SkillsDir
+    SKILLS --> SkillsDir

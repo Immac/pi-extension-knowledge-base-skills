@@ -1,5 +1,6 @@
 import { mkdirSync, readdirSync, rmSync, writeFileSync } from 'fs';
 import { join } from 'path';
+import matter from 'gray-matter';
 import type { SkillSourceRecord } from './types.js';
 
 function ensureDir(path: string): void {
@@ -18,8 +19,28 @@ export function writeSkillCache(cacheRoot: string, skills: readonly SkillSourceR
   for (const skill of skills) {
     const skillDir = join(cacheRoot, skill.skillName);
     ensureDir(skillDir);
+
+    // Ensure the SKILL.md has valid frontmatter with name and description
+    const parsed = matter(skill.skillContent.trimStart());
+    const hasName = typeof parsed.data.name === 'string' && parsed.data.name.length > 0;
+    const hasDescription = typeof parsed.data.description === 'string' && parsed.data.description.trim().length > 0;
+
+    let finalContent: string;
+    if (hasName && hasDescription) {
+      finalContent = skill.skillContent;
+    } else {
+      finalContent = [
+        '---',
+        `name: ${skill.skillName}`,
+        `description: ${skill.skillDescription}`,
+        '---',
+        '',
+        skill.skillContent,
+      ].join('\n');
+    }
+
     const skillMd = join(skillDir, 'SKILL.md');
-    writeFileSync(skillMd, skill.skillContent, 'utf8');
+    writeFileSync(skillMd, finalContent, 'utf8');
     writeFileSync(
       join(skillDir, 'SOURCE.json'),
       JSON.stringify(

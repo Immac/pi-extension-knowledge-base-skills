@@ -27,6 +27,9 @@
   "pi": {
     "extensions": [
       "./knowledge-base-skills.ts"
+    ],
+    "skills": [
+      "./skills"
     ]
   }
 }

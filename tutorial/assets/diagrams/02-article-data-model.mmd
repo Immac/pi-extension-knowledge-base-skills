@@ -1,0 +1,24 @@
+flowchart LR
+    subgraph KB_Article["KB Article (ARTICLE.md)"]
+        OF["Outer Frontmatter<br/>title, tags, created, modified"]
+        IC["Body Content<br/>(inner frontmatter + markdown)"]
+    end
+
+    subgraph InnerFM["Inner Frontmatter (embedded)"]
+        NAME["name: my-skill"]
+        DESC["description: Does X"]
+    end
+
+    subgraph Tags["Required Tags"]
+        T1["type: skill"]
+        T2["kind: skill-source"]
+        T3["skill: enabled | disabled"]
+        T4["skill_ref: &lt;id&gt;"]
+        T5["skill_name: &lt;name&gt;"]
+        T6["audience: agent"]
+        T7["format: agent-skill"]
+        T8["source: user"]
+    end
+
+    OF --> Tags
+    IC --> InnerFM

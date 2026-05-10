@@ -1,0 +1,10 @@
+flowchart TD
+    A[Author writes SKILL.md] --> B[kb_save_skill]
+    B --> C[KB skill-source article<br/>type:skill, kind:skill-source]
+    B --> D[KB documentation article<br/>type:guide, kind:skill-doc]
+    C --> E{kb_list_skills<br/>validation check}
+    E -->|Has errors| F[kb_fix_skill]
+    F --> E
+    E -->|Valid & enabled| G[kb_install_skill]
+    G --> H[<code>.pi/agent/skills/&lt;name&gt;/SKILL.md</code>]
+    H --> I[pi discovers on reload]
