@@ -1,7 +1,14 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'fs';
 import { homedir } from 'os';
-import { dirname, join, resolve } from 'path';
+import { join, resolve } from 'path';
 import matter from 'gray-matter';
+
+// Import from the main knowledge-base extension for consistent path resolution and read logic.
+// This ensures the skills extension always uses the same folder-per-article layout and
+// file format as the core KB tools (kb-read, kb-list, etc.).
+import { readArticle as kbReadArticle, listArticles as kbListArticles } from '../../knowledge-base/dist/storage.js';
+import { getArticleMainPath } from '../../knowledge-base/dist/config.js';
+
 import type { CreateArticleOptions, KnowledgeBaseArticle, ValueTag } from './types.js';
 
 function parseTagString(tag: string): ValueTag | null {
@@ -74,12 +81,6 @@ export function serializeArticle(options: CreateArticleOptions): string {
   return lines.join('\n');
 }
 
-/** Determine if the knowledge base uses folder-based (articles/{slug}/) or flat layout */
-function getKbLayout(knowledgeBasePath: string): 'folder' | 'flat' {
-  const articlesDir = join(knowledgeBasePath, 'articles');
-  return existsSync(articlesDir) && statSync(articlesDir).isDirectory() ? 'folder' : 'flat';
-}
-
 /** Generate a kebab-case slug from a title */
 export function generateSlug(title: string): string {
   return title
@@ -90,21 +91,16 @@ export function generateSlug(title: string): string {
     .replace(/-+/g, '-');
 }
 
-/** Write an article to the knowledge base in the appropriate layout format */
+/**
+ * Create an article in the knowledge base using the folder-per-article layout
+ * (articles/{slug}/ARTICLE.md), which matches the main KB extension's layout.
+ * Uses custom serialization to preserve inner frontmatter in the body content.
+ */
 export function createArticle(options: CreateArticleOptions, knowledgeBasePath: string): { slug: string; filePath: string } {
   const slug = generateSlug(options.title);
-  const layout = getKbLayout(knowledgeBasePath);
-
-  let filePath: string;
-  if (layout === 'folder') {
-    const articleDir = join(knowledgeBasePath, 'articles', slug);
-    mkdirSync(articleDir, { recursive: true });
-    filePath = join(articleDir, 'ARTICLE.md');
-  } else {
-    filePath = join(knowledgeBasePath, `${slug}.md`);
-    const parent = dirname(filePath);
-    if (!existsSync(parent)) mkdirSync(parent, { recursive: true });
-  }
+  const articleDir = join(knowledgeBasePath, 'articles', slug);
+  mkdirSync(articleDir, { recursive: true });
+  const filePath = join(articleDir, 'ARTICLE.md');
 
   const content = serializeArticle(options);
   writeFileSync(filePath, content, 'utf8');
@@ -122,69 +118,71 @@ function hasFolderArticles(knowledgeBasePath: string): boolean {
   return existsSync(dir) && statSync(dir).isDirectory();
 }
 
+/**
+ * Read an article from the knowledge base.
+ * Delegates to the main KB extension's readArticle for folder/flat fallback,
+ * then enriches with raw frontmatter needed by skill parsing.
+ */
 export function readArticle(slug: string, knowledgeBasePath: string): KnowledgeBaseArticle | null {
-  let filePath: string;
+  // Build a config object matching what the main KB extension expects
+  const config = { dataPath: knowledgeBasePath, isLocal: true };
+  const article = kbReadArticle(slug, config);
+  if (!article) return null;
 
-  // 1. Try folder-based: articles/{slug}/ARTICLE.md
-  if (hasFolderArticles(knowledgeBasePath)) {
-    filePath = join(getArticlesDir(knowledgeBasePath), slug, 'ARTICLE.md');
-    if (existsSync(filePath)) {
-      const raw = readFileSync(filePath, 'utf8');
+  // Read raw frontmatter from the ARTICLE.md file (the main KB doesn't surface this directly)
+  let frontmatter: Record<string, unknown> = {};
+  const mainPath = getArticleMainPath(knowledgeBasePath, slug);
+  if (existsSync(mainPath)) {
+    try {
+      const raw = readFileSync(mainPath, 'utf8');
       const parsed = matter(raw);
-      const title = typeof parsed.data.title === 'string' && parsed.data.title.trim().length > 0
-        ? parsed.data.title
-        : slug;
-      return {
-        slug,
-        title,
-        content: parsed.content,
-        tags: parseValueTags(parsed.data.tags),
-        filePath,
-        frontmatter: { ...parsed.data },
-      };
+      frontmatter = parsed.data as Record<string, unknown>;
+    } catch {
+      // Fall back to empty frontmatter
     }
   }
 
-  // 2. Fallback to legacy flat file at root
-  filePath = join(knowledgeBasePath, `${slug}.md`);
-  if (existsSync(filePath)) {
-    const raw = readFileSync(filePath, 'utf8');
-    const parsed = matter(raw);
-    const title = typeof parsed.data.title === 'string' && parsed.data.title.trim().length > 0
-      ? parsed.data.title
-      : slug;
-    return {
-      slug,
-      title,
-      content: parsed.content,
-      tags: parseValueTags(parsed.data.tags),
-      filePath,
-      frontmatter: { ...parsed.data },
-    };
-  }
-
-  return null;
+  return {
+    slug: article.slug,
+    title: article.title,
+    content: article.content,
+    tags: article.tags,
+    filePath: article.filePath,
+    frontmatter,
+  };
 }
 
+/**
+ * List all article file paths in a knowledge base.
+ * Delegates to the main KB extension's listArticles for consistent layout handling.
+ */
 export function listArticleFiles(knowledgeBasePath: string): readonly string[] {
-  if (!existsSync(knowledgeBasePath)) return [];
+  const config = { dataPath: knowledgeBasePath, isLocal: true };
 
-  if (hasFolderArticles(knowledgeBasePath)) {
-    // New folder-based layout: each subfolder in articles/ has an ARTICLE.md
-    const articlesDir = getArticlesDir(knowledgeBasePath);
-    return readdirSync(articlesDir)
-      .filter((entry) => {
-        const statPath = join(articlesDir, entry);
-        return statSync(statPath).isDirectory();
-      })
-      .map((slug) => join(articlesDir, slug, 'ARTICLE.md'))
-      .filter((filePath) => existsSync(filePath));
+  // listArticles auto-migrates legacy flat files and returns all articles
+  try {
+    const articles = kbListArticles(config);
+    return articles.map((a) => a.filePath);
+  } catch {
+    // Fallback: if the KB doesn't exist yet, return empty
+    if (!existsSync(knowledgeBasePath)) return [];
+
+    // Manual fallback for flat-layout KBs that haven't been migrated
+    if (hasFolderArticles(knowledgeBasePath)) {
+      const articlesDir = getArticlesDir(knowledgeBasePath);
+      return readdirSync(articlesDir)
+        .filter((entry) => {
+          const statPath = join(articlesDir, entry);
+          return statSync(statPath).isDirectory();
+        })
+        .map((slug) => join(articlesDir, slug, 'ARTICLE.md'))
+        .filter((filePath) => existsSync(filePath));
+    }
+
+    return readdirSync(knowledgeBasePath)
+      .filter((entry) => entry.endsWith('.md') && !entry.endsWith('.sidecar.md'))
+      .map((entry) => join(knowledgeBasePath, entry));
   }
-
-  // Legacy flat files at root
-  return readdirSync(knowledgeBasePath)
-    .filter((entry) => entry.endsWith('.md') && !entry.endsWith('.sidecar.md'))
-    .map((entry) => join(knowledgeBasePath, entry));
 }
 
 /** Resolve the knowledge base data path for a given scope.

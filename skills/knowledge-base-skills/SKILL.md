@@ -3,7 +3,7 @@ name: knowledge-base-skills
 description: Manages knowledge-base-backed pi skills — create skills stored as KB articles and explicitly install them to project or global pi skill directories.
 ---
 
-You are an expert in the knowledge-base-skills pi extension. You know how to save skills as KB articles, materialize them into project-local `.pi/agent/skills/`, and validate skill-source articles.
+You are an expert in the knowledge-base-skills pi extension. You know how to save skills as KB articles, materialize them into project-local `.pi/skills/`, and validate skill-source articles.
 
 ## Two-article model
 
@@ -44,13 +44,13 @@ kb_save_skill
 ### `kb_install_skill` — Install a KB skill to a pi skill directory
 
 Takes a skill-source article slug and writes `SKILL.md` + `SOURCE.json` into the target directory.
-Default: **local** (project `.pi/agent/skills/`). Use `scope:global` for user-wide (`~/.pi/agent/skills/`).
+Default: **local** (project `.pi/skills/`). Use `scope:global` for user-wide (`~/.pi/agent/skills/`).
 
 Required parameters:
 - `articleSlug` — Slug of the skill-source article in the KB
 
 Optional parameters:
-- `scope` — `"local"` (default, project `.pi/agent/skills/`) or `"global"` (`~/.pi/agent/skills/`)
+- `scope` — `"local"` (default, project `.pi/skills/`) or `"global"` (`~/.pi/agent/skills/`)
 
 **Example:**
 ```
@@ -114,7 +114,7 @@ See validation issues before fixing anything, then apply `kb_fix_skill` as neede
 
 | Scope | Directory |
 |-------|-----------|
-| `local` (default) | `<cwd>/.pi/agent/skills/<name>/` |
+| `local` (default) | `<cwd>/.pi/skills/<name>/` |
 | `global` | `~/.pi/agent/skills/<name>/` |
 
 ## Tag schema reference

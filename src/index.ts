@@ -37,7 +37,8 @@ export default function registerKnowledgeBaseSkills(pi: ExtensionAPI) {
         description: 'Whether the skill is enabled (default: true)',
       })),
     }),
-    async execute(_toolCallId, params) {
+    async execute(_toolCallId, params, signal?: AbortSignal) {
+      if (signal?.aborted) return { content: [{ type: 'text', text: 'Aborted' }], details: {}, isError: true };
       const result = executeSaveSkill({
         skillName: params.skillName as string,
         skillContent: params.skillContent as string,
@@ -67,10 +68,11 @@ export default function registerKnowledgeBaseSkills(pi: ExtensionAPI) {
         Type.Literal('local'),
         Type.Literal('global'),
       ], {
-        description: 'Install target (default: local — .pi/agent/skills/, global — ~/.pi/agent/skills/)',
+        description: 'Source scope and install target (default: local). Reads from local or global KB, then installs to .pi/skills/ (local) or ~/.pi/agent/skills/ (global). Falls back across scopes if not found.',
       })),
     }),
-    async execute(_toolCallId, params) {
+    async execute(_toolCallId, params, signal?: AbortSignal) {
+      if (signal?.aborted) return { content: [{ type: 'text', text: 'Aborted' }], details: {}, isError: true };
       const result = executeMaterializeSkill({
         articleSlug: params.articleSlug as string,
         scope: params.scope as 'local' | 'global' | undefined,
@@ -106,7 +108,8 @@ export default function registerKnowledgeBaseSkills(pi: ExtensionAPI) {
         description: 'Show detailed validation issues for each skill (default: false)',
       })),
     }),
-    async execute(_toolCallId, params) {
+    async execute(_toolCallId, params, signal?: AbortSignal) {
+      if (signal?.aborted) return { content: [{ type: 'text', text: 'Aborted' }], details: {}, isError: true };
       const result = executeListSkills({
         scope: params.scope as 'local' | 'global' | 'all' | undefined,
         status: params.status as 'enabled' | 'disabled' | 'all' | undefined,
@@ -114,7 +117,7 @@ export default function registerKnowledgeBaseSkills(pi: ExtensionAPI) {
       });
       return {
         content: [{ type: 'text', text: formatListSkillsResult(result, params.verbose as boolean | undefined) }],
-        details: { skills: result.skills },
+        details: { skills: result.skills } as any,
       };
     },
   });
@@ -147,7 +150,8 @@ export default function registerKnowledgeBaseSkills(pi: ExtensionAPI) {
         description: 'Override source tag value (default: user)',
       })),
     }),
-    async execute(_toolCallId, params) {
+    async execute(_toolCallId, params, signal?: AbortSignal) {
+      if (signal?.aborted) return { content: [{ type: 'text', text: 'Aborted' }], details: {}, isError: true };
       const result = executeFixSkill({
         articleSlug: params.articleSlug as string,
         fixTags: params.fixTags as boolean | undefined,

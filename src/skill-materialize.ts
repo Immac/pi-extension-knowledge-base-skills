@@ -2,14 +2,13 @@ import { mkdirSync, writeFileSync } from 'fs';
 import { homedir } from 'os';
 import { join } from 'path';
 import matter from 'gray-matter';
-import { readArticle } from './kb.js';
-import { getDefaultKnowledgeBasePath } from './loader.js';
+import { readArticle, resolveKbPath } from './kb.js';
 import type { MaterializeSkillOptions, MaterializeSkillResult } from './types.js';
 import { parseSkillSource } from './skill-source.js';
 
 /**
  * Resolve the install target directory based on scope.
- * Local → `<cwd>/.pi/agent/skills/`
+ * Local → `<cwd>/.pi/skills/`
  * Global → `~/.pi/agent/skills/`
  */
 export function resolveInstallDir(scope: 'local' | 'global'): string {
@@ -19,16 +18,26 @@ export function resolveInstallDir(scope: 'local' | 'global'): string {
     return dir;
   }
 
-  // local — project .pi/agent/skills/
-  const dir = join(process.cwd(), '.pi', 'agent', 'skills');
+  // local — project .pi/skills/
+  const dir = join(process.cwd(), '.pi', 'skills');
   mkdirSync(dir, { recursive: true });
   return dir;
 }
 
 export function executeMaterializeSkill(options: MaterializeSkillOptions): MaterializeSkillResult {
   try {
-    const knowledgeBasePath = getDefaultKnowledgeBasePath();
-    const article = readArticle(options.articleSlug, knowledgeBasePath);
+    // Determine source scope: use the install scope by default, fall back to the other scope
+    const sourceScope = options.scope ?? 'local';
+    let knowledgeBasePath = resolveKbPath(sourceScope);
+    let article = readArticle(options.articleSlug, knowledgeBasePath);
+
+    // Fallback: try the other scope if not found in the requested one
+    if (!article) {
+      const fallbackScope = sourceScope === 'local' ? 'global' : 'local';
+      knowledgeBasePath = resolveKbPath(fallbackScope);
+      article = readArticle(options.articleSlug, knowledgeBasePath);
+    }
+
     if (!article) {
       return { success: false, error: `Article not found: ${options.articleSlug}` };
     }

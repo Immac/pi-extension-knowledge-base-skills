@@ -50,7 +50,7 @@ Install a skill from the knowledge base into a pi skill directory.
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `articleSlug` | string | — | Slug of the skill-source article in the knowledge base |
-| `scope` | `"local"` \| `"global"` | `"local"` | Install target (project `.pi/agent/skills/` or `~/.pi/agent/skills/`) |
+| `scope` | `"local"` \| `"global"` | `"local"` | Install target (project `.pi/skills/` or `~/.pi/agent/skills/`) |
 
 ### `kb_fix_skill`
 
@@ -92,7 +92,7 @@ The skill metadata (`name`, `description`) can come from either:
 
 | Scope | Directory |
 |-------|-----------|
-| `local` (default) | `<cwd>/.pi/agent/skills/<name>/` |
+| `local` (default) | `<cwd>/.pi/skills/<name>/` |
 | `global` | `~/.pi/agent/skills/<name>/` |
 
 Each installation creates:
@@ -152,7 +152,7 @@ kb_fix_skill
 
 Default paths:
 - Knowledge base: `~/.pi/knowledge-base/`
-- Install target: `.pi/agent/skills/` (project) or `~/.pi/agent/skills/` (global)
+- Install target: `.pi/skills/` (project) or `~/.pi/agent/skills/` (global)
 
 Override the knowledge base path:
 
