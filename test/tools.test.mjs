@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { stringify as stringifyToml } from 'smol-toml';
 
 import { executeSaveSkill } from '../dist/save-skill.js';
 import { executeMaterializeSkill } from '../dist/skill-materialize.js';
@@ -16,9 +17,77 @@ const KB_FLAG = 'KB_SKILLS_KB_PATH';
 function withTempKb(files, fn) {
   const root = mkdtempSync(join(tmpdir(), 'kb-skills-test-'));
   const kbPath = join(root, 'kb');
-  mkdirSync(kbPath, { recursive: true });
+  const articlesDir = join(kbPath, 'articles');
+  mkdirSync(articlesDir, { recursive: true });
   for (const [slug, content] of Object.entries(files)) {
-    writeFileSync(join(kbPath, `${slug}.md`), content, 'utf8');
+    const articleDir = join(articlesDir, slug);
+    mkdirSync(articleDir, { recursive: true });
+    // Parse only the FIRST frontmatter block; keep everything else as body
+    // (inner frontmatter must be preserved in body for skill parsing)
+    const lines = content.split('\n');
+    let firstDashCount = 0;
+    let frontmatterEndIdx = -1;
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i].trim() === '---') {
+        firstDashCount++;
+        if (firstDashCount === 2) {
+          frontmatterEndIdx = i;
+          break;
+        }
+      }
+    }
+    let frontmatterLines = [];
+    let bodyLines = [];
+    if (frontmatterEndIdx > 0) {
+      frontmatterLines = lines.slice(1, frontmatterEndIdx);
+      bodyLines = lines.slice(frontmatterEndIdx + 1);
+    } else {
+      bodyLines = lines;
+    }
+    const frontmatter = {};
+    let currentKey = '';
+    let inArray = false;
+    for (const line of frontmatterLines) {
+      const kvMatch = line.match(/^\s*(\w+):\s*(.*)/);
+      if (kvMatch && !inArray) {
+        currentKey = kvMatch[1];
+        const val = kvMatch[2].trim();
+        if (val === '' || val === undefined) {
+          frontmatter[currentKey] = [];
+          inArray = true;
+        } else {
+          frontmatter[currentKey] = val.replace(/^['"]|['"]$/g, '');
+          inArray = false;
+        }
+      } else if (inArray && line.match(/^\s+-\s+(.+)/)) {
+        const itemMatch = line.match(/^\s+-\s+(.+)/);
+        if (itemMatch && currentKey) {
+          if (!Array.isArray(frontmatter[currentKey])) frontmatter[currentKey] = [];
+          frontmatter[currentKey].push(itemMatch[1].replace(/^['"]|['"]$/g, '').trim());
+        }
+      } else {
+        inArray = false;
+      }
+    }
+    const body = bodyLines.join('\n').trim();
+    const now = new Date().toISOString();
+    const tagsRaw = Array.isArray(frontmatter.tags) ? frontmatter.tags : [];
+    const tags = tagsRaw.map(t => {
+      const idx = t.indexOf(':');
+      if (idx === -1) return { key: t, value: '' };
+      return { key: t.slice(0, idx).trim(), value: t.slice(idx + 1).trim() };
+    });
+    const doc = {
+      meta: {
+        title: frontmatter.title || slug,
+        slug,
+        created: now,
+        modified: now,
+      },
+      tags,
+      body: [{ type: 'text', markdown: body }],
+    };
+    writeFileSync(join(articleDir, 'ARTICLE.toml'), stringifyToml(doc), 'utf8');
   }
   const prev = process.env[KB_FLAG];
   process.env[KB_FLAG] = kbPath;
@@ -80,20 +149,21 @@ test('save-skill: creates both linked articles in local scope', () => {
     assert.match(result.skillSlug, /test-skill/);
 
     // Verify skill-source article was written (folder layout)
-    const skillPath = join(kbPath, 'articles', result.skillSlug, 'ARTICLE.md');
+    const skillPath = join(kbPath, 'articles', result.skillSlug, 'ARTICLE.toml');
     assert.equal(existsSync(skillPath), true, 'skill-source article should exist on disk');
     const skillRaw = readFileSync(skillPath, 'utf8');
-    assert.ok(skillRaw.includes('type:skill'), 'should have type:skill tag');
-    assert.ok(skillRaw.includes('skill:enabled'), 'should be enabled');
-    assert.ok(skillRaw.includes('skill_name:test-skill'), 'should have skill_name');
+    // TOML format: tags are [[tags]] tables with key/value
+    assert.ok(skillRaw.includes('"type"') && skillRaw.includes('"skill"'), 'should have type:skill tag');
+    assert.ok(skillRaw.includes('"skill"') && skillRaw.includes('"enabled"'), 'should be enabled');
+    assert.ok(skillRaw.includes('"skill_name"') && skillRaw.includes('"test-skill"'), 'should have skill_name');
 
     // Verify doc article was written
-    const docPath = join(kbPath, 'articles', result.docSlug, 'ARTICLE.md');
+    const docPath = join(kbPath, 'articles', result.docSlug, 'ARTICLE.toml');
     assert.equal(existsSync(docPath), true, 'doc article should exist on disk');
     const docRaw = readFileSync(docPath, 'utf8');
-    assert.ok(docRaw.includes('type:guide'), 'should have type:guide tag');
-    assert.ok(docRaw.includes('kind:skill-doc'), 'should have kind:skill-doc tag');
-    assert.ok(docRaw.includes('audience:human'), 'doc should be audience:human');
+    assert.ok(docRaw.includes('"type"') && docRaw.includes('"guide"'), 'should have type:guide tag');
+    assert.ok(docRaw.includes('"kind"') && docRaw.includes('"skill-doc"'), 'should have kind:skill-doc tag');
+    assert.ok(docRaw.includes('"audience"') && docRaw.includes('"human"'), 'doc should be audience:human');
   } finally {
     process.env[KB_FLAG] = prev;
     rmSync(root, { recursive: true, force: true });
@@ -117,9 +187,9 @@ test('save-skill: creates disabled skill when enabled:false', () => {
 
     assert.equal(result.success, true);
     assert.ok(result.skillSlug);
-    const skillRaw = readFileSync(join(kbPath, 'articles', result.skillSlug, 'ARTICLE.md'), 'utf8');
-    assert.ok(skillRaw.includes('skill:disabled'), 'should be disabled');
-    assert.ok(!skillRaw.includes('skill:enabled'), 'should not be enabled');
+    const skillRaw = readFileSync(join(kbPath, 'articles', result.skillSlug, 'ARTICLE.toml'), 'utf8');
+    assert.ok(skillRaw.includes('"disabled"'), 'should be disabled');
+    assert.ok(!skillRaw.includes('"enabled"'), 'should not be enabled');
   } finally {
     process.env[KB_FLAG] = prev;
     rmSync(root, { recursive: true, force: true });
@@ -144,13 +214,13 @@ test('save-skill: passes extra tags to both articles', () => {
     assert.equal(result.success, true);
     assert.ok(result.skillSlug);
     assert.ok(result.docSlug);
-    const skillRaw = readFileSync(join(kbPath, 'articles', result.skillSlug, 'ARTICLE.md'), 'utf8');
-    assert.ok(skillRaw.includes('domain:testing'), 'should pass domain tag');
-    assert.ok(skillRaw.includes('status:stable'), 'should pass status tag');
+    const skillRaw = readFileSync(join(kbPath, 'articles', result.skillSlug, 'ARTICLE.toml'), 'utf8');
+    assert.ok(skillRaw.includes('"domain"') && skillRaw.includes('"testing"'), 'should pass domain tag');
+    assert.ok(skillRaw.includes('"status"') && skillRaw.includes('"stable"'), 'should pass status tag');
 
-    const docRaw = readFileSync(join(kbPath, 'articles', result.docSlug, 'ARTICLE.md'), 'utf8');
-    assert.ok(docRaw.includes('domain:testing'), 'doc should also have domain tag');
-    assert.ok(docRaw.includes('status:stable'), 'doc should also have status tag');
+    const docRaw = readFileSync(join(kbPath, 'articles', result.docSlug, 'ARTICLE.toml'), 'utf8');
+    assert.ok(docRaw.includes('"domain"') && docRaw.includes('"testing"'), 'doc should also have domain tag');
+    assert.ok(docRaw.includes('"status"') && docRaw.includes('"stable"'), 'doc should also have status tag');
   } finally {
     process.env[KB_FLAG] = prev;
     rmSync(root, { recursive: true, force: true });

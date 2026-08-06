@@ -1,5 +1,5 @@
 import { readFileSync, writeFileSync } from 'fs';
-import matter from 'gray-matter';
+import { parse as parseToml, stringify as stringifyToml } from 'smol-toml';
 import { readArticle } from './kb.js';
 import type { ValueTag } from './types.js';
 import { getDefaultKnowledgeBasePath } from './loader.js';
@@ -90,19 +90,19 @@ export function executeFixSkill(options: FixSkillOptions): FixSkillResult {
 
     const actions: FixSkillAction[] = [];
     const raw = readFileSync(article.filePath, 'utf8');
-    const parsed = matter(raw);
-    const tagList: string[] = Array.isArray(parsed.data.tags)
-      ? parsed.data.tags.map((t: unknown) => String(t))
-      : [];
+    const parsed = parseToml(raw) as Record<string, unknown>;
+    const meta = (parsed.meta ?? {}) as Record<string, unknown>;
+    const tagsRaw = (parsed.tags ?? []) as unknown[];
+    const bodyRaw = (parsed.body ?? []) as unknown[];
 
+    // Convert TOML tags to key:value strings for comparison
     const existingTags = new Map<string, string>();
-    for (const tagStr of tagList) {
-      const colonIdx = tagStr.indexOf(':');
-      if (colonIdx === -1) continue;
-      const key = tagStr.slice(0, colonIdx).trim();
-      const val = tagStr.slice(colonIdx + 1).trim().replace(/^'|'$/g, '');
-      if (!existingTags.has(key)) {
-        existingTags.set(key, val);
+    for (const tag of tagsRaw) {
+      if (tag && typeof tag === 'object') {
+        const t = tag as Record<string, unknown>;
+        if (typeof t.key === 'string') {
+          existingTags.set(t.key, typeof t.value === 'string' ? t.value : '');
+        }
       }
     }
 
@@ -152,7 +152,17 @@ export function executeFixSkill(options: FixSkillOptions): FixSkillResult {
 
     // ── Inner frontmatter fixes ──
     if (fixFrontmatter) {
-      const body = parsed.content;
+      // Reconstruct body content from TOML body nodes
+      const bodyParts: string[] = [];
+      for (const node of bodyRaw) {
+        if (node && typeof node === 'object') {
+          const n = node as Record<string, unknown>;
+          if (n.type === 'text' && typeof n.markdown === 'string') {
+            bodyParts.push(n.markdown);
+          }
+        }
+      }
+      const body = bodyParts.join('\n\n');
 
       // Parse existing inner frontmatter first to use as defaults
       const existingInner = parseInnerFrontmatter(body);
@@ -235,8 +245,9 @@ export function executeFixSkill(options: FixSkillOptions): FixSkillResult {
         actions.push({ type: 'frontmatter_added', field: 'inner-frontmatter', detail: 'Added inner frontmatter block with name and description' });
       }
 
-      // Update parsed content
-      parsed.content = newContent;
+      // Update bodyRaw with modified content
+      bodyRaw.length = 0;
+      bodyRaw.push({ type: 'text', markdown: newContent });
     }
 
     // ── Write changes ──
@@ -244,55 +255,45 @@ export function executeFixSkill(options: FixSkillOptions): FixSkillResult {
       return { success: true, slug: articleSlug, actions, filePath: article.filePath };
     }
 
-    // Rebuild tags list preserving original order
-    const newTagStrings: string[] = [];
-    const seenKeys = new Set<string>();
-    for (const tagStr of tagList) {
-      const colonIdx = tagStr.indexOf(':');
-      if (colonIdx === -1) continue;
-      const key = tagStr.slice(0, colonIdx).trim();
-      if (seenKeys.has(key)) continue;
-      seenKeys.add(key);
-
-      if (existingTags.has(key)) {
-        newTagStrings.push(`'${key}:${existingTags.get(key)}'`);
-      } else {
-        newTagStrings.push(tagStr);
-      }
-    }
-    // Add any newly introduced keys at the end
-    for (const [key, val] of existingTags) {
-      if (!seenKeys.has(key)) {
-        newTagStrings.push(`'${key}:${val}'`);
-        seenKeys.add(key);
-      }
-    }
-
-    // Manually serialize frontmatter (gray-matter.stringify destroys inner frontmatter)
+    // Serialize to TOML format
     const now = new Date().toISOString();
-    const origTitle = parsed.data.title || articleSlug;
-    const origCreated = parsed.data.created || now;
+    const origTitle = (meta.title as string) || articleSlug;
+    const origCreated = (meta.created as string) || now;
 
-    const frontmatterLines: string[] = [
-      '---',
-      `title: ${origTitle}`,
-      'tags:',
-    ];
-    for (const tagStr of newTagStrings) {
-      frontmatterLines.push(`  - ${tagStr}`);
+    // Convert existingTags Map to TOML tags array
+    const tomlTags: Array<{ key: string; value: string }> = [];
+    for (const [key, val] of existingTags) {
+      tomlTags.push({ key, value: val });
     }
-    frontmatterLines.push(`created: ${origCreated}`);
-    frontmatterLines.push(`modified: ${now}`);
-    frontmatterLines.push('---');
 
-    const body = (parsed.content || '').trimEnd();
-    if (body) {
-      frontmatterLines.push('');
-      frontmatterLines.push(body);
+    // Reconstruct body content from TOML body nodes (may include inner frontmatter)
+    const bodyParts: string[] = [];
+    for (const node of bodyRaw) {
+      if (node && typeof node === 'object') {
+        const n = node as Record<string, unknown>;
+        if (n.type === 'text' && typeof n.markdown === 'string') {
+          bodyParts.push(n.markdown);
+        } else if (n.type === 'heading' && typeof n.text === 'string') {
+          bodyParts.push('#'.repeat(typeof n.level === 'number' ? n.level : 1) + ' ' + n.text);
+        } else if (n.type === 'block' && typeof n.ref === 'string') {
+          bodyParts.push('!block:' + n.ref);
+        }
+      }
     }
-    frontmatterLines.push('');
+    const bodyContent = bodyParts.join('\n\n').trimEnd();
 
-    writeFileSync(article.filePath, frontmatterLines.join('\n'), 'utf8');
+    const doc: Record<string, unknown> = {
+      meta: {
+        title: origTitle,
+        slug: articleSlug,
+        created: origCreated,
+        modified: now,
+      },
+      tags: tomlTags,
+      body: [{ type: 'text', markdown: bodyContent }],
+    };
+
+    writeFileSync(article.filePath, stringifyToml(doc), 'utf8');
 
     return {
       success: true,

@@ -46,8 +46,8 @@ export function executeListSkills(options: ListSkillsOptions): ListSkillsResult 
 
     for (const filePath of articleFiles) {
       // Extract slug from path
-      const folderMatch = filePath.match(/articles\/([^/]+)\/ARTICLE\.md$/);
-      const slug = folderMatch ? folderMatch[1] : filePath.split('/').pop()?.replace(/\.md$/, '') ?? '';
+      const folderMatch = filePath.match(/articles\/([^/]+)\/ARTICLE\.(toml|md)$/);
+      const slug = folderMatch ? folderMatch[1] : filePath.split('/').pop()?.replace(/\.(toml|md)$/, '') ?? '';
       if (!slug) continue;
 
       const article = readArticle(slug, kbPath);

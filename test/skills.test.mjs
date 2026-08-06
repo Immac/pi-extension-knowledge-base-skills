@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { stringify as stringifyToml } from 'smol-toml';
 
 // We test the compiled JS, not TS source
 import { executeListSkills, formatListSkillsResult } from '../dist/list-skills.js';
@@ -15,9 +16,77 @@ const GLOBAL_FLAG = 'KB_SKILLS_KB_PATH';
 function withTempKb(files, fn) {
   const root = mkdtempSync(join(tmpdir(), 'kb-skills-test-'));
   const kbPath = join(root, 'kb');
-  mkdirSync(kbPath, { recursive: true });
+  const articlesDir = join(kbPath, 'articles');
+  mkdirSync(articlesDir, { recursive: true });
   for (const [slug, content] of Object.entries(files)) {
-    writeFileSync(join(kbPath, `${slug}.md`), content, 'utf8');
+    const articleDir = join(articlesDir, slug);
+    mkdirSync(articleDir, { recursive: true });
+    // Parse only the FIRST frontmatter block; keep everything else as body
+    // (inner frontmatter must be preserved in body for skill parsing)
+    const lines = content.split('\n');
+    let firstDashCount = 0;
+    let frontmatterEndIdx = -1;
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i].trim() === '---') {
+        firstDashCount++;
+        if (firstDashCount === 2) {
+          frontmatterEndIdx = i;
+          break;
+        }
+      }
+    }
+    let frontmatterLines = [];
+    let bodyLines = [];
+    if (frontmatterEndIdx > 0) {
+      frontmatterLines = lines.slice(1, frontmatterEndIdx);
+      bodyLines = lines.slice(frontmatterEndIdx + 1);
+    } else {
+      bodyLines = lines;
+    }
+    const frontmatter = {};
+    let currentKey = '';
+    let inArray = false;
+    for (const line of frontmatterLines) {
+      const kvMatch = line.match(/^\s*(\w+):\s*(.*)/);
+      if (kvMatch && !inArray) {
+        currentKey = kvMatch[1];
+        const val = kvMatch[2].trim();
+        if (val === '' || val === undefined) {
+          frontmatter[currentKey] = [];
+          inArray = true;
+        } else {
+          frontmatter[currentKey] = val.replace(/^['"]|['"]$/g, '');
+          inArray = false;
+        }
+      } else if (inArray && line.match(/^\s+-\s+(.+)/)) {
+        const itemMatch = line.match(/^\s+-\s+(.+)/);
+        if (itemMatch && currentKey) {
+          if (!Array.isArray(frontmatter[currentKey])) frontmatter[currentKey] = [];
+          frontmatter[currentKey].push(itemMatch[1].replace(/^['"]|['"]$/g, '').trim());
+        }
+      } else {
+        inArray = false;
+      }
+    }
+    const body = bodyLines.join('\n').trim();
+    const now = new Date().toISOString();
+    const tagsRaw = Array.isArray(frontmatter.tags) ? frontmatter.tags : [];
+    const tags = tagsRaw.map(t => {
+      const idx = t.indexOf(':');
+      if (idx === -1) return { key: t, value: '' };
+      return { key: t.slice(0, idx).trim(), value: t.slice(idx + 1).trim() };
+    });
+    const doc = {
+      meta: {
+        title: frontmatter.title || slug,
+        slug,
+        created: now,
+        modified: now,
+      },
+      tags,
+      body: [{ type: 'text', markdown: body }],
+    };
+    writeFileSync(join(articleDir, 'ARTICLE.toml'), stringifyToml(doc), 'utf8');
   }
   const prev = process.env[GLOBAL_FLAG];
   process.env[GLOBAL_FLAG] = kbPath;
@@ -258,11 +327,12 @@ test('fix-skill: adds missing required tags', () => {
     assert.ok(addedTags.length >= 4);  // skill_ref, skill_name, audience, format, source, (skill already present)
 
     // Verify file was updated
-    const raw = readFileSync(join(kbPath, 'missing-tags-source.md'), 'utf8');
-    assert.ok(raw.includes("skill_ref:missing-tags-source"));
-    assert.ok(raw.includes("skill_name:missing-tags-source"));
-    assert.ok(raw.includes("audience:agent"));
-    assert.ok(raw.includes("format:agent-skill"));
+    const raw = readFileSync(join(kbPath, 'articles', 'missing-tags-source', 'ARTICLE.toml'), 'utf8');
+    // TOML format: check for tag key/value pairs
+    assert.ok(raw.includes('"skill_ref"') && raw.includes('"missing-tags-source"'));
+    assert.ok(raw.includes('"skill_name"') && raw.includes('"missing-tags-source"'));
+    assert.ok(raw.includes('"audience"') && raw.includes('"agent"'));
+    assert.ok(raw.includes('"format"') && raw.includes('"agent-skill"'));
   });
 });
 
@@ -295,7 +365,8 @@ test('fix-skill: adds inner frontmatter when missing', () => {
     assert.ok(result.actions.some(a => a.type === 'frontmatter_added'));
 
     // Verify file was updated
-    const raw = readFileSync(join(kbPath, 'no-fm-source.md'), 'utf8');
+    const raw = readFileSync(join(kbPath, 'articles', 'no-fm-source', 'ARTICLE.toml'), 'utf8');
+    // Inner frontmatter is stored in body content as markdown
     assert.ok(raw.includes('name: no-fm'));
     assert.ok(raw.includes('description: Fixed description'));
   });
@@ -312,9 +383,9 @@ test('fix-skill: enables disabled skill', () => {
     assert.equal(result.success, true);
     assert.ok(result.actions.some(a => a.type === 'tag_enabled'));
 
-    const raw = readFileSync(join(kbPath, 'disabled-source.md'), 'utf8');
-    assert.ok(raw.includes('skill:enabled'));
-    assert.ok(!raw.includes('skill:disabled'));
+    const raw = readFileSync(join(kbPath, 'articles', 'disabled-source', 'ARTICLE.toml'), 'utf8');
+    assert.ok(raw.includes('"enabled"'));
+    assert.ok(!raw.includes('"disabled"'));  // should not have disabled tag
   });
 });
 
@@ -350,7 +421,8 @@ test('fix-skill: fixes name mismatch', () => {
     assert.equal(result.success, true);
     assert.ok(result.actions.some(a => a.type === 'frontmatter_fixed'));
 
-    const raw = readFileSync(join(kbPath, 'misnamed-source.md'), 'utf8');
+    const raw = readFileSync(join(kbPath, 'articles', 'misnamed-source', 'ARTICLE.toml'), 'utf8');
+    // Inner frontmatter in body
     assert.ok(raw.includes('name: misnamed'));  // fixed
     assert.ok(!raw.includes('name: wrong-name'));  // removed
   });
@@ -394,11 +466,13 @@ test('fix-skill: combined fix — missing tags, missing frontmatter, disabled', 
     assert.equal(tagEnable.length, 1, 'should have enabled');
     assert.ok(fmFixes.length >= 1, 'should have fixed frontmatter');
 
-    const raw = readFileSync(join(kbPath, 'trashed-source.md'), 'utf8');
-    assert.ok(raw.includes('skill:enabled'));
+    const raw = readFileSync(join(kbPath, 'articles', 'trashed-source', 'ARTICLE.toml'), 'utf8');
+    assert.ok(raw.includes('"enabled"'));
+    // Inner frontmatter in body
     assert.ok(raw.includes('description: Resurrected'));
-    assert.ok(raw.includes('skill_name:trashed'));
-    assert.ok(raw.includes('audience:agent'));
+    // Tags
+    assert.ok(raw.includes('"skill_name"') && raw.includes('"trashed"'));
+    assert.ok(raw.includes('"audience"') && raw.includes('"agent"'));
   });
 });
 
@@ -433,7 +507,7 @@ test('fix-skill: handles malformed inner frontmatter (no closing ---)', () => {
     assert.equal(result.success, true);
     assert.ok(result.actions.some(a => a.type === 'frontmatter_added'));
 
-    const raw = readFileSync(join(kbPath, 'malformed-source.md'), 'utf8');
+    const raw = readFileSync(join(kbPath, 'articles', 'malformed-source', 'ARTICLE.toml'), 'utf8');
     assert.ok(raw.includes('name: malformed'));
     assert.ok(raw.includes('description: Fixed'));
   });
