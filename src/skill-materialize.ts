@@ -1,6 +1,7 @@
 import { mkdirSync, writeFileSync } from 'fs';
 import { homedir } from 'os';
 import { join } from 'path';
+// gray-matter retained for SKILL.md inner frontmatter (community standard) — not for article parsing
 import matter from 'gray-matter';
 import { readArticle, resolveKbPath } from './kb.js';
 import type { MaterializeSkillOptions, MaterializeSkillResult } from './types.js';

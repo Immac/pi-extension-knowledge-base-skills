@@ -1,3 +1,4 @@
+// gray-matter retained for SKILL.md inner frontmatter (community standard) — not for article parsing
 import matter from 'gray-matter';
 import type { KnowledgeBaseArticle, SkillSourceRecord, ValueTag } from './types.js';
 

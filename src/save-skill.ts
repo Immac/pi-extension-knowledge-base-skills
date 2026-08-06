@@ -1,3 +1,4 @@
+// gray-matter retained for SKILL.md inner frontmatter (community standard) — not for article parsing
 import matter from 'gray-matter';
 import { createArticle, resolveKbPath } from './kb.js';
 import type { SaveSkillOptions, SaveSkillResult, ValueTag } from './types.js';
